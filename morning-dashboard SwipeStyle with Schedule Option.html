@@ -1,0 +1,722 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Day Planner</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+:root {
+  --bg: #0a0a0a; --surface: #141414; --surface2: #1e1e1e; --border: #2a2a2a;
+  --text: #f0f0f0; --muted: #555;
+  --morning: #f5c842; --afternoon: #f57c42; --evening: #4287f5; --tomorrow: #777;
+  --success: #42f577; --danger: #f55; --done: #a855f7;
+}
+html, body { background: var(--bg); color: var(--text); font-family: 'DM Sans', sans-serif; min-height: 100vh; overflow: hidden; }
+
+/* ── SETUP ── */
+#setupScreen { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 32px 24px; gap: 18px; }
+.setup-title { font-family: 'Bebas Neue', sans-serif; font-size: 52px; letter-spacing: 3px; }
+.setup-sub { font-size: 13px; color: var(--muted); text-align: center; line-height: 1.6; max-width: 300px; }
+.setup-steps { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 20px; width: 100%; max-width: 360px; }
+.setup-steps ol { padding-left: 18px; font-size: 12px; color: var(--muted); line-height: 2.1; }
+.setup-steps a { color: var(--evening); text-decoration: none; }
+.setup-steps code { color: var(--text); font-family: 'DM Mono', monospace; font-size: 11px; }
+.token-input { width: 100%; max-width: 360px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; color: var(--text); font-family: 'DM Mono', monospace; font-size: 12px; outline: none; transition: border-color 0.2s; }
+.token-input:focus { border-color: var(--evening); }
+.token-input::placeholder { color: var(--muted); }
+.setup-btn { width: 100%; max-width: 360px; background: var(--text); color: var(--bg); border: none; border-radius: 10px; padding: 14px; font-family: 'Bebas Neue', sans-serif; font-size: 20px; letter-spacing: 2px; cursor: pointer; }
+.setup-note { font-size: 11px; color: var(--muted); text-align: center; max-width: 300px; line-height: 1.5; }
+
+/* ── APP ── */
+#app { display: none; flex-direction: column; align-items: center; height: 100vh; overflow: hidden; }
+
+/* LOADING */
+#loadingScreen { position: fixed; inset: 0; background: var(--bg); display: none; flex-direction: column; align-items: center; justify-content: center; gap: 16px; z-index: 999; }
+#loadingScreen.show { display: flex; }
+.loading-title { font-family: 'Bebas Neue', sans-serif; font-size: 48px; letter-spacing: 3px; }
+.loading-msg { font-size: 12px; color: var(--muted); font-family: 'DM Mono', monospace; }
+.spinner { width: 28px; height: 28px; border: 2px solid var(--border); border-top-color: var(--text); border-radius: 50%; animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* HEADER */
+.header { width: 100%; max-width: 480px; padding: 20px 20px 8px; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; }
+.header-left { display: flex; flex-direction: column; }
+.header-sub { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 2px; }
+.header-title { font-family: 'Bebas Neue', sans-serif; font-size: 36px; line-height: 1; letter-spacing: 1px; }
+.progress-wrap { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.progress-text { font-family: 'DM Mono', monospace; font-size: 11px; color: var(--muted); }
+.progress-bar { width: 80px; height: 3px; background: var(--border); border-radius: 2px; overflow: hidden; }
+.progress-fill { height: 100%; background: var(--text); border-radius: 2px; transition: width 0.3s ease; }
+
+/* DIRECTION HINTS */
+.dir-hints { width: 100%; max-width: 480px; padding: 0 20px 8px; display: grid; grid-template-columns: 1fr 1fr; gap: 4px; flex-shrink: 0; }
+.hint { display: flex; align-items: center; gap: 6px; font-size: 10px; color: var(--muted); font-family: 'DM Mono', monospace; }
+.hint-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+
+/* CARD STACK AREA */
+.stack-area { flex: 1; width: 100%; max-width: 480px; padding: 0 20px; position: relative; display: flex; align-items: center; justify-content: center; min-height: 0; }
+
+/* CARDS */
+.task-card {
+  position: absolute;
+  width: calc(100% - 40px);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 24px;
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  max-height: calc(100% - 20px);
+  overflow: hidden;
+}
+.task-card.back1 { transform: scale(0.95) translateY(10px); z-index: 1; opacity: 0.6; }
+.task-card.back2 { transform: scale(0.90) translateY(20px); z-index: 0; opacity: 0.3; }
+.task-card.front { z-index: 10; }
+.task-card.dragging { transition: none; cursor: grabbing; }
+.task-card.flying-left { transition: transform 0.35s ease, opacity 0.35s ease; transform: translateX(-150vw) rotate(-25deg) !important; opacity: 0; }
+.task-card.flying-right { transition: transform 0.35s ease, opacity 0.35s ease; transform: translateX(150vw) rotate(25deg) !important; opacity: 0; }
+.task-card.flying-up { transition: transform 0.35s ease, opacity 0.35s ease; transform: translateY(-150vh) !important; opacity: 0; }
+.task-card.flying-down { transition: transform 0.35s ease, opacity 0.35s ease; transform: translateY(150vh) !important; opacity: 0; }
+.task-card.flying-out { transition: transform 0.3s ease, opacity 0.3s ease; transform: scale(1.05); opacity: 0; }
+
+.card-status { font-size: 10px; font-family: 'DM Mono', monospace; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 12px; }
+.s-ip { color: var(--morning); } .s-td { color: var(--muted); } .s-rb { color: var(--evening); } .s-wt { color: var(--afternoon); }
+.card-domain { font-size: 11px; font-family: 'DM Mono', monospace; color: var(--muted); margin-bottom: 6px; }
+.card-name { font-size: 20px; font-weight: 500; line-height: 1.35; margin-bottom: 10px; }
+.card-guide { font-size: 13px; color: var(--muted); font-style: italic; line-height: 1.5; margin-top: 8px; padding-top: 10px; border-top: 1px solid var(--border); }
+.card-deadline { font-size: 11px; font-family: 'DM Mono', monospace; color: var(--danger); margin-top: 8px; }
+
+/* DIRECTION LABEL ON CARD */
+.card-dir-label {
+  position: absolute; top: 20px; right: 20px;
+  font-family: 'Bebas Neue', sans-serif; font-size: 22px; letter-spacing: 2px;
+  padding: 4px 10px; border-radius: 6px;
+  opacity: 0; transition: opacity 0.1s;
+  pointer-events: none;
+}
+.card-dir-label.show { opacity: 1; }
+.label-morning { background: rgba(245,200,66,0.15); color: var(--morning); border: 1px solid var(--morning); }
+.label-afternoon { background: rgba(245,124,66,0.15); color: var(--afternoon); border: 1px solid var(--afternoon); }
+.label-evening { background: rgba(66,135,245,0.15); color: var(--evening); border: 1px solid var(--evening); }
+.label-tomorrow { background: rgba(119,119,119,0.15); color: var(--tomorrow); border: 1px solid var(--tomorrow); }
+.label-skip { background: rgba(85,85,85,0.15); color: var(--muted); border: 1px solid var(--muted); }
+.label-done { background: rgba(168,85,247,0.15); color: var(--done); border: 1px solid var(--done); }
+
+/* ACTION BUTTONS */
+.action-btns { width: 100%; max-width: 480px; padding: 8px 20px 10px; display: flex; gap: 10px; flex-shrink: 0; }
+.action-btn {
+  flex: 1; padding: 12px 6px;
+  background: var(--surface); border-radius: 12px;
+  font-family: 'Bebas Neue', sans-serif; font-size: 14px; letter-spacing: 1.5px;
+  cursor: pointer; transition: background 0.15s, border-color 0.15s;
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+}
+.action-btn .btn-icon { font-size: 18px; line-height: 1; }
+.btn-morning { border: 1px solid rgba(245,200,66,0.3); color: var(--morning); }
+.btn-afternoon { border: 1px solid rgba(245,124,66,0.3); color: var(--afternoon); }
+.btn-evening { border: 1px solid rgba(66,135,245,0.3); color: var(--evening); }
+.btn-tomorrow { border: 1px solid rgba(119,119,119,0.3); color: var(--tomorrow); }
+.btn-skip { border: 1px solid var(--border); color: var(--muted); }
+.btn-done { border: 1px solid rgba(168,85,247,0.3); color: var(--done); }
+.btn-schedule { border: 1px solid rgba(66,245,135,0.3); color: var(--success); }
+
+/* TIME PICKER MODAL */
+.time-modal { position: fixed; inset: 0; background: rgba(0,0,0,0.92); z-index: 400; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; padding-bottom: 0; }
+.time-modal-inner { background: var(--surface); border-radius: 20px 20px 0 0; width: 100%; max-width: 480px; padding: 24px 24px 40px; display: flex; flex-direction: column; gap: 20px; }
+.time-modal-title { font-family: 'Bebas Neue', sans-serif; font-size: 28px; letter-spacing: 2px; }
+.time-modal-task { font-size: 12px; color: var(--muted); font-style: italic; line-height: 1.4; }
+.wheels-row { display: flex; gap: 12px; justify-content: center; align-items: center; }
+.wheel-wrap { display: flex; flex-direction: column; align-items: center; gap: 8px; flex: 1; }
+.wheel-label { font-size: 10px; font-family: 'DM Mono', monospace; color: var(--muted); text-transform: uppercase; letter-spacing: 1.5px; }
+.wheel { height: 180px; overflow: hidden; position: relative; border: 1px solid var(--border); border-radius: 12px; background: var(--bg); cursor: grab; }
+.wheel:active { cursor: grabbing; }
+.wheel-items { display: flex; flex-direction: column; transition: transform 0.1s ease; }
+.wheel-item { height: 44px; display: flex; align-items: center; justify-content: center; font-family: 'Bebas Neue', sans-serif; font-size: 28px; letter-spacing: 1px; color: var(--muted); transition: color 0.1s, font-size 0.1s; flex-shrink: 0; }
+.wheel-item.selected { color: var(--text); font-size: 34px; }
+.wheel-overlay-top { position: absolute; top: 0; left: 0; right: 0; height: 68px; background: linear-gradient(to bottom, var(--bg), transparent); pointer-events: none; border-radius: 12px 12px 0 0; }
+.wheel-overlay-bot { position: absolute; bottom: 0; left: 0; right: 0; height: 68px; background: linear-gradient(to top, var(--bg), transparent); pointer-events: none; border-radius: 0 0 12px 12px; }
+.wheel-selector { position: absolute; top: 50%; left: 0; right: 0; height: 44px; transform: translateY(-50%); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); pointer-events: none; }
+.colon { font-family: 'Bebas Neue', sans-serif; font-size: 36px; color: var(--muted); padding-bottom: 8px; }
+.time-modal-btns { display: flex; gap: 10px; }
+.time-confirm-btn { flex: 2; background: var(--text); color: var(--bg); border: none; border-radius: 10px; padding: 14px; font-family: 'Bebas Neue', sans-serif; font-size: 20px; letter-spacing: 2px; cursor: pointer; }
+.time-cancel-btn { flex: 1; background: var(--surface2); border: 1px solid var(--border); color: var(--muted); border-radius: 10px; padding: 14px; font-family: 'Bebas Neue', sans-serif; font-size: 20px; letter-spacing: 2px; cursor: pointer; }
+.action-btn:active { opacity: 0.7; }
+
+/* BUCKETS SCREEN */
+#bucketsScreen { display: none; flex-direction: column; align-items: center; width: 100%; height: 100vh; overflow-y: auto; padding-bottom: 30px; }
+.buckets-header { width: 100%; max-width: 480px; padding: 28px 20px 16px; }
+.buckets-title { font-family: 'Bebas Neue', sans-serif; font-size: 44px; letter-spacing: 2px; }
+.buckets-sub { font-size: 12px; color: var(--muted); font-family: 'DM Mono', monospace; margin-top: 4px; }
+.buckets-grid { width: 100%; max-width: 480px; padding: 0 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.bucket { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 14px; min-height: 80px; }
+.bucket-label { font-size: 10px; font-family: 'DM Mono', monospace; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+.bucket-dot { width: 7px; height: 7px; border-radius: 50%; }
+.bucket-item { font-size: 12px; color: var(--text); line-height: 1.8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bucket-empty { font-size: 12px; color: var(--border); font-style: italic; }
+.skipped-section { width: 100%; max-width: 480px; padding: 12px 20px 0; }
+.skipped-label { font-size: 10px; font-family: 'DM Mono', monospace; color: var(--muted); text-transform: uppercase; letter-spacing: 2px; margin-bottom: 8px; }
+.skipped-item { font-size: 12px; color: var(--muted); line-height: 1.8; }
+.save-area { width: 100%; max-width: 480px; padding: 16px 20px 8px; }
+.save-btn { width: 100%; background: var(--text); color: var(--bg); border: none; border-radius: 12px; padding: 16px; font-family: 'Bebas Neue', sans-serif; font-size: 22px; letter-spacing: 2px; cursor: pointer; transition: opacity 0.2s, background 0.3s; }
+.save-btn:disabled { opacity: 0.25; cursor: not-allowed; }
+.back-btn { width: 100%; max-width: 480px; padding: 0 20px; }
+.back-btn button { background: none; border: none; color: var(--muted); font-size: 12px; font-family: 'DM Mono', monospace; cursor: pointer; text-decoration: underline; }
+.settings-row { width: 100%; max-width: 480px; padding: 8px 20px 0; text-align: right; }
+.settings-row button { background: none; border: none; color: var(--muted); font-size: 11px; font-family: 'DM Mono', monospace; cursor: pointer; text-decoration: underline; }
+
+/* EMPTY STATE */
+#emptyState { display: none; flex-direction: column; align-items: center; justify-content: center; height: 100vh; gap: 16px; }
+.empty-title { font-family: 'Bebas Neue', sans-serif; font-size: 48px; letter-spacing: 3px; color: var(--muted); }
+.empty-sub { font-size: 13px; color: var(--muted); font-family: 'DM Mono', monospace; }
+.view-buckets-btn { margin-top: 8px; background: var(--surface); border: 1px solid var(--border); color: var(--text); padding: 12px 24px; border-radius: 10px; font-family: 'Bebas Neue', sans-serif; font-size: 18px; letter-spacing: 2px; cursor: pointer; }
+
+/* TOAST */
+#toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: #1a0808; border: 1px solid #3a1010; color: var(--danger); padding: 10px 18px; border-radius: 8px; font-size: 12px; font-family: 'DM Mono', monospace; z-index: 500; display: none; white-space: nowrap; }
+#toast.show { display: block; }
+#toast.success { background: #0a1a0a; border-color: #1a3a1a; color: var(--success); }
+</style>
+</head>
+<body>
+
+<!-- SETUP -->
+<div id="setupScreen">
+  <div class="setup-title">DAY PLAN</div>
+  <div class="setup-sub">One-time setup — connect your Notion workspace.</div>
+  <div class="setup-steps">
+    <ol>
+      <li>Go to <a href="https://notion.so/my-integrations" target="_blank">notion.so/my-integrations</a></li>
+      <li>New integration → name it <code>Day Planner</code></li>
+      <li>Copy the <code>Internal Integration Token</code></li>
+      <li>In Notion → Eisenhower Matrix → ··· → Connections → add <code>Day Planner</code></li>
+      <li>Paste token below</li>
+    </ol>
+  </div>
+  <input class="token-input" id="tokenInput" type="password" placeholder="ntn_xxxxxxxxxxxxxxxx..." autocomplete="off" spellcheck="false" />
+  <button class="setup-btn" onclick="saveToken()">CONNECT</button>
+  <div class="setup-note">Saved locally on your device only. Never transmitted anywhere except Notion.</div>
+</div>
+
+<!-- MAIN APP -->
+<div id="app">
+  <div id="loadingScreen">
+    <div class="loading-title">DAY PLAN</div>
+    <div class="spinner"></div>
+    <div class="loading-msg" id="loadingMsg">Loading tasks...</div>
+  </div>
+
+  <!-- CARD VIEW -->
+  <div id="cardView" style="display:flex;flex-direction:column;align-items:center;width:100%;height:100vh;">
+    <div class="header">
+      <div class="header-left">
+        <div class="header-sub" id="dateLabel"></div>
+        <div class="header-title">Day Plan</div>
+      </div>
+      <div class="progress-wrap">
+        <div class="progress-text" id="progressText">0 / 0</div>
+        <div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
+      </div>
+    </div>
+
+    <div class="dir-hints">
+      <div class="hint"><div class="hint-dot" style="background:var(--morning)"></div>← Morning</div>
+      <div class="hint"><div class="hint-dot" style="background:var(--afternoon)"></div>→ Afternoon</div>
+      <div class="hint"><div class="hint-dot" style="background:var(--evening)"></div>↑ Evening</div>
+      <div class="hint"><div class="hint-dot" style="background:var(--tomorrow)"></div>↓ Tomorrow</div>
+    </div>
+
+    <div class="stack-area" id="stackArea"></div>
+
+    <div class="action-btns">
+      <div class="action-btn btn-morning" onclick="assignCurrent('morning')"><div class="btn-icon">←</div>Morning</div>
+      <div class="action-btn btn-skip" onclick="skipCurrent()"><div class="btn-icon">○</div>Skip</div>
+      <div class="action-btn btn-done" onclick="doneCurrent()"><div class="btn-icon">✓</div>Done</div>
+      <div class="action-btn btn-afternoon" onclick="assignCurrent('afternoon')"><div class="btn-icon">→</div>After</div>
+    </div>
+    <div class="action-btns" style="padding-top:0;">
+      <div class="action-btn btn-evening" onclick="assignCurrent('evening')" style="flex:1"><div class="btn-icon">↑</div>Evening</div>
+      <div class="action-btn btn-schedule" onclick="scheduleCurrent()" style="flex:1"><div class="btn-icon">🕐</div>Schedule</div>
+      <div class="action-btn btn-tomorrow" onclick="assignCurrent('tomorrow')" style="flex:1"><div class="btn-icon">↓</div>Tomorrow</div>
+    </div>
+    <div class="settings-row"><button onclick="resetToken()">Change token</button></div>
+  </div>
+
+  <!-- EMPTY STATE -->
+  <div id="emptyState">
+    <div class="empty-title">ALL DONE</div>
+    <div class="empty-sub">No more tasks to assign.</div>
+    <button class="view-buckets-btn" onclick="showBuckets()">VIEW DAY PLAN</button>
+  </div>
+
+  <!-- BUCKETS SCREEN -->
+  <div id="bucketsScreen">
+    <div class="buckets-header">
+      <div class="buckets-title">Day Plan</div>
+      <div class="buckets-sub" id="bucketsDateSub"></div>
+    </div>
+    <div class="buckets-grid">
+      <div class="bucket"><div class="bucket-label"><div class="bucket-dot" style="background:var(--morning)"></div>Morning</div><div id="bMorning"><span class="bucket-empty">Empty</span></div></div>
+      <div class="bucket"><div class="bucket-label"><div class="bucket-dot" style="background:var(--afternoon)"></div>Afternoon</div><div id="bAfternoon"><span class="bucket-empty">Empty</span></div></div>
+      <div class="bucket"><div class="bucket-label"><div class="bucket-dot" style="background:var(--evening)"></div>Evening</div><div id="bEvening"><span class="bucket-empty">Empty</span></div></div>
+      <div class="bucket"><div class="bucket-label"><div class="bucket-dot" style="background:var(--tomorrow)"></div>Tomorrow</div><div id="bTomorrow"><span class="bucket-empty">Empty</span></div></div>
+    </div>
+    <div class="skipped-section" id="skippedSection" style="display:none">
+      <div class="skipped-label">Skipped</div>
+      <div id="skippedList"></div>
+    </div>
+    <div class="save-area">
+      <button class="save-btn" id="saveBtn" onclick="saveToNotion()">SAVE TO NOTION</button>
+    </div>
+    <div class="back-btn"><button onclick="showCards()">← Back to cards</button></div>
+    <div class="settings-row"><button onclick="resetToken()">Change token</button></div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+const DB_ID = '327fd376d1e8805492def9d3a1bf59e0';
+const NOTION_API = 'https://icy-frost-a743.ssdhwswqyt.workers.dev';
+const NOTION_VER = '2022-06-28';
+
+let tasks = [];
+let queue = []; // indices of tasks left to decide
+let assignments = {}; // pageId -> 'Morning'|'Afternoon'|'Evening'|'Tomorrow'
+let skipped = []; // pageIds
+let markedDone = []; // pageIds
+let currentIdx = 0;
+let totalToDecide = 0;
+
+// Date
+const now = new Date();
+const TODAY = now.toISOString().split('T')[0];
+const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const dateStr = `${DAYS[now.getDay()]}, ${MONTHS[now.getMonth()]} ${now.getDate()}`;
+document.getElementById('dateLabel').textContent = dateStr;
+document.getElementById('bucketsDateSub').textContent = dateStr;
+
+// Token
+const getToken = () => localStorage.getItem('notion_dp_token');
+function saveToken() {
+  const t = document.getElementById('tokenInput').value.trim();
+  if (!t) { showToast('Paste your token first.'); return; }
+  localStorage.setItem('notion_dp_token', t);
+  startApp();
+}
+function resetToken() {
+  localStorage.removeItem('notion_dp_token');
+  document.getElementById('app').style.display = 'none';
+  document.getElementById('setupScreen').style.display = 'flex';
+  document.getElementById('tokenInput').value = '';
+}
+
+// Notion API
+async function nr(path, method='GET', body=null) {
+  const url = NOTION_API + path;
+  const opts = { method, headers: { 'Authorization': `Bearer ${getToken()}`, 'Content-Type': 'application/json', 'Notion-Version': NOTION_VER } };
+  if (body) opts.body = JSON.stringify(body);
+  const res = await fetch(url, opts);
+  if (!res.ok) { const e = await res.json().catch(()=>({})); throw new Error(e.message || `HTTP ${res.status}`); }
+  return res.json();
+}
+
+// Fetch
+async function fetchTasks() {
+  showLoading('Loading tasks...');
+  try {
+    const data = await nr(`/databases/${DB_ID}/query`, 'POST', {
+      filter: { property: 'Status', select: { does_not_equal: 'Done' } },
+      sorts: [{ timestamp: 'created_time', direction: 'ascending' }],
+      page_size: 100
+    });
+    tasks = data.results.map(p => ({
+      id: p.id,
+      name: p.properties.Name?.title?.map(t=>t.plain_text).join('') || 'Untitled',
+      status: p.properties.Status?.select?.name || 'To Do',
+      guidingStep: p.properties['Guiding Step']?.rich_text?.map(t=>t.plain_text).join('') || null,
+      domain: p.properties.Domain?.multi_select?.map(d=>d.name)[0] || '',
+      deadline: p.properties.Deadline?.date?.start?.split('T')[0] || null,
+      created: p.created_time,
+      timeBlock: p.properties['Time Block']?.select?.name || null
+    }));
+
+    // Pre-load existing time blocks
+    tasks.forEach(t => { if (t.timeBlock) assignments[t.id] = t.timeBlock; });
+
+    // Sort: today → in progress → recurring → todo → waiting
+    const rank = t => {
+      if (t.deadline === TODAY) return 0;
+      if (t.status === 'In Progress') return 1;
+      if (t.status === 'Recurring Block') return 2;
+      if (t.status === 'To Do') return 3;
+      return 4;
+    };
+    tasks.sort((a,b) => { const d=rank(a)-rank(b); return d!==0?d:new Date(a.created)-new Date(b.created); });
+
+    queue = tasks.map((_,i)=>i);
+    totalToDecide = queue.length;
+    currentIdx = 0;
+
+    hideLoading();
+    if (tasks.length === 0) { showEmpty(); return; }
+    renderStack();
+    updateProgress();
+  } catch(e) {
+    hideLoading();
+    showToast('Error: ' + e.message);
+  }
+}
+
+// Stack rendering
+function renderStack() {
+  const area = document.getElementById('stackArea');
+  area.innerHTML = '';
+  const remaining = queue.slice(currentIdx);
+  if (remaining.length === 0) { showEmpty(); return; }
+
+  // Show up to 3 cards in the stack
+  const toShow = remaining.slice(0, 3).reverse();
+  toShow.forEach((taskIdx, i) => {
+    const card = makeCard(tasks[taskIdx]);
+    const pos = toShow.length - 1 - i;
+    if (pos === 0) card.classList.add('front');
+    else if (pos === 1) card.classList.add('back1');
+    else card.classList.add('back2');
+    area.appendChild(card);
+    if (pos === 0) attachSwipe(card, tasks[taskIdx]);
+  });
+  updateProgress();
+}
+
+function makeCard(task) {
+  const card = document.createElement('div');
+  card.className = 'task-card';
+  card.dataset.id = task.id;
+  const sm = { 'In Progress':['s-ip','In Progress'], 'To Do':['s-td','To Do'], 'Recurring Block':['s-rb','Recurring'], 'Waiting':['s-wt','Waiting'] };
+  const [sc,sl] = sm[task.status] || ['s-td', task.status];
+  const isOverdue = task.deadline && task.deadline < TODAY;
+  card.innerHTML = `
+    <div class="card-status ${sc}">${sl}</div>
+    ${task.domain ? `<div class="card-domain">${task.domain}</div>` : ''}
+    <div class="card-name">${task.name}</div>
+    ${task.guidingStep ? `<div class="card-guide">${task.guidingStep}</div>` : ''}
+    ${task.deadline ? `<div class="card-deadline">${isOverdue ? '⚠ Overdue: ' : 'Due: '}${task.deadline}</div>` : ''}
+    <div class="card-dir-label" id="dirLabel_${task.id}"></div>
+  `;
+  return card;
+}
+
+// Swipe
+function attachSwipe(card, task) {
+  let sx=0,sy=0,cx=0,cy=0,dragging=false;
+  const start=(x,y)=>{ sx=cx=x;sy=cy=y;dragging=true;card.classList.add('dragging'); };
+  const move=(x,y)=>{
+    if(!dragging)return;cx=x;cy=y;
+    const dx=cx-sx,dy=cy-sy;
+    card.style.transform=`translate(${dx}px,${dy*.4}px) rotate(${dx*0.03}deg)`;
+    const dir=getDir(dx,dy,false);
+    updateDirLabel(task.id, dir);
+  };
+  const end=()=>{
+    if(!dragging)return;dragging=false;card.classList.remove('dragging');
+    const dx=cx-sx,dy=cy-sy;
+    const dir=getDir(dx,dy,true);
+    if(dir) flyCard(card,task,dir);
+    else { card.style.transform=''; updateDirLabel(task.id,null); }
+  };
+  card.addEventListener('touchstart',e=>{const t=e.touches[0];start(t.clientX,t.clientY);},{passive:true});
+  card.addEventListener('touchmove',e=>{const t=e.touches[0];move(t.clientX,t.clientY);e.preventDefault();},{passive:false});
+  card.addEventListener('touchend',end);
+  card.addEventListener('mousedown',e=>start(e.clientX,e.clientY));
+  window.addEventListener('mousemove',e=>{if(dragging)move(e.clientX,e.clientY);});
+  window.addEventListener('mouseup',()=>{if(dragging)end();});
+}
+
+function getDir(dx,dy,commit) {
+  const t=commit?70:35,adx=Math.abs(dx),ady=Math.abs(dy);
+  if(adx<t&&ady<t)return null;
+  return adx>ady?(dx<0?'morning':'afternoon'):(dy<0?'evening':'tomorrow');
+}
+
+function updateDirLabel(id, dir) {
+  const el = document.getElementById(`dirLabel_${id}`);
+  if (!el) return;
+  if (!dir) { el.className='card-dir-label'; el.textContent=''; return; }
+  const labels = {morning:'MORNING',afternoon:'AFTERNOON',evening:'EVENING',tomorrow:'TOMORROW'};
+  el.textContent = labels[dir];
+  el.className = `card-dir-label show label-${dir}`;
+}
+
+function flyCard(card, task, dir) {
+  const dirClass = { morning:'flying-left', afternoon:'flying-right', evening:'flying-up', tomorrow:'flying-down' };
+  card.style.transform = '';
+  card.classList.add(dirClass[dir]);
+  const block = dir.charAt(0).toUpperCase()+dir.slice(1);
+  assignments[task.id] = block;
+  setTimeout(()=>{ currentIdx++; renderStack(); updateBuckets(); }, 350);
+}
+
+// Button actions
+function assignCurrent(dir) {
+  const front = document.querySelector('.task-card.front');
+  if (!front) return;
+  const task = tasks[queue[currentIdx]];
+  flyCard(front, task, dir);
+}
+
+let scheduledTimes = {}; // pageId -> 'HH:MM'
+
+function scheduleCurrent() {
+  const front = document.querySelector('.task-card.front');
+  if (!front) return;
+  const task = tasks[queue[currentIdx]];
+  showTimePicker(task);
+}
+
+function showTimePicker(task) {
+  document.querySelectorAll('.time-modal').forEach(m => m.remove());
+
+  const hours = Array.from({length:24},(_,i)=>String(i).padStart(2,'0'));
+  const mins = ['00','05','10','15','20','25','30','35','40','45','50','55'];
+
+  const now = new Date();
+  let selHour = now.getHours();
+  let selMin = Math.round(now.getMinutes()/5)*5 % 60;
+  let selMinIdx = mins.indexOf(String(selMin).padStart(2,'0'));
+  if (selMinIdx < 0) selMinIdx = 0;
+
+  const modal = document.createElement('div');
+  modal.className = 'time-modal';
+  modal.innerHTML = `
+    <div class="time-modal-inner">
+      <div class="time-modal-title">Schedule It</div>
+      <div class="time-modal-task">${task.name.length>60?task.name.slice(0,60)+'…':task.name}</div>
+      <div class="wheels-row">
+        <div class="wheel-wrap">
+          <div class="wheel-label">Hour</div>
+          <div class="wheel" id="hourWheel">
+            <div class="wheel-items" id="hourItems"></div>
+            <div class="wheel-overlay-top"></div>
+            <div class="wheel-overlay-bot"></div>
+            <div class="wheel-selector"></div>
+          </div>
+        </div>
+        <div class="colon">:</div>
+        <div class="wheel-wrap">
+          <div class="wheel-label">Minute</div>
+          <div class="wheel" id="minWheel">
+            <div class="wheel-items" id="minItems"></div>
+            <div class="wheel-overlay-top"></div>
+            <div class="wheel-overlay-bot"></div>
+            <div class="wheel-selector"></div>
+          </div>
+        </div>
+      </div>
+      <div class="time-modal-btns">
+        <button class="time-cancel-btn" id="timeCancelBtn">CANCEL</button>
+        <button class="time-confirm-btn" id="timeConfirmBtn">CONFIRM</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+
+  // Build wheels
+  buildWheel('hourItems', hours, selHour, (i) => { selHour = i; });
+  buildWheel('minItems', mins, selMinIdx, (i) => { selMinIdx = i; });
+
+  document.getElementById('timeCancelBtn').onclick = () => modal.remove();
+  document.getElementById('timeConfirmBtn').onclick = () => {
+    const timeStr = `${hours[selHour]}:${mins[selMinIdx]}`;
+    scheduledTimes[task.id] = timeStr;
+    // Assign to the right bucket based on time
+    const h = parseInt(hours[selHour]);
+    let block = 'Morning';
+    if (h >= 12 && h < 17) block = 'Afternoon';
+    else if (h >= 17) block = 'Evening';
+    assignments[task.id] = block;
+    // Show label on card
+    const label = document.getElementById(`dirLabel_${task.id}`);
+    if (label) { label.textContent = timeStr; label.className = 'card-dir-label show label-morning'; label.style.background='rgba(66,245,135,0.15)'; label.style.color='var(--success)'; label.style.borderColor='var(--success)'; }
+    modal.remove();
+    const front = document.querySelector('.task-card.front');
+    if (front) { front.classList.add('flying-out'); setTimeout(()=>{ currentIdx++; renderStack(); updateBuckets(); },300); }
+  };
+}
+
+function buildWheel(containerId, items, initialIdx, onSelect) {
+  const container = document.getElementById(containerId);
+  const ITEM_H = 44;
+  const VISIBLE = 3; // items visible above/below center
+  let currentSel = initialIdx;
+
+  // Render items with padding
+  container.innerHTML = '';
+  // Add padding items
+  for (let i=0;i<VISIBLE;i++) { const pad=document.createElement('div'); pad.className='wheel-item'; pad.style.height=ITEM_H+'px'; container.appendChild(pad); }
+  items.forEach((v,i) => { const el=document.createElement('div'); el.className='wheel-item'+(i===initialIdx?' selected':''); el.textContent=v; el.style.height=ITEM_H+'px'; container.appendChild(el); });
+  for (let i=0;i<VISIBLE;i++) { const pad=document.createElement('div'); pad.className='wheel-item'; pad.style.height=ITEM_H+'px'; container.appendChild(pad); }
+
+  const wheel = container.closest('.wheel');
+  let startY=0, startOffset=0, isDragging=false;
+  let offset = -initialIdx * ITEM_H;
+
+  const clamp = (v) => Math.min(0, Math.max(-(items.length-1)*ITEM_H, v));
+  const snap = (v) => { const idx = Math.round(-v/ITEM_H); return -Math.max(0,Math.min(items.length-1,idx))*ITEM_H; };
+  const getIdx = (v) => Math.max(0,Math.min(items.length-1, Math.round(-v/ITEM_H)));
+
+  const apply = (v, animate) => {
+    container.style.transition = animate ? 'transform 0.2s ease' : 'none';
+    container.style.transform = `translateY(${v}px)`;
+    const idx = getIdx(v);
+    container.querySelectorAll('.wheel-item').forEach((el,i) => {
+      const realI = i - VISIBLE;
+      el.classList.toggle('selected', realI === idx);
+    });
+    currentSel = idx;
+    onSelect(idx);
+  };
+
+  apply(offset, false);
+
+  const onStart = (y) => { isDragging=true; startY=y; startOffset=offset; container.style.transition='none'; };
+  const onMove = (y) => { if(!isDragging)return; offset=clamp(startOffset+(y-startY)); apply(offset,false); };
+  const onEnd = () => { if(!isDragging)return; isDragging=false; offset=snap(offset); apply(offset,true); };
+
+  wheel.addEventListener('touchstart',e=>onStart(e.touches[0].clientY),{passive:true});
+  wheel.addEventListener('touchmove',e=>{e.preventDefault();onMove(e.touches[0].clientY);},{passive:false});
+  wheel.addEventListener('touchend',onEnd);
+  wheel.addEventListener('mousedown',e=>onStart(e.clientY));
+  wheel.addEventListener('mousemove',e=>{if(isDragging)onMove(e.clientY);});
+  wheel.addEventListener('mouseup',onEnd);
+  wheel.addEventListener('mouseleave',()=>{if(isDragging)onEnd();});
+}
+
+function skipCurrent() {
+  const front = document.querySelector('.task-card.front');
+  if (!front) return;
+  const task = tasks[queue[currentIdx]];
+  skipped.push(task.id);
+  front.classList.add('flying-out');
+  setTimeout(()=>{ currentIdx++; renderStack(); updateBuckets(); }, 300);
+}
+
+function doneCurrent() {
+  const front = document.querySelector('.task-card.front');
+  if (!front) return;
+  const task = tasks[queue[currentIdx]];
+  markedDone.push(task.id);
+  const label = document.getElementById(`dirLabel_${task.id}`);
+  if (label) { label.textContent='DONE'; label.className='card-dir-label show label-done'; }
+  front.classList.add('flying-out');
+  setTimeout(()=>{ currentIdx++; renderStack(); updateBuckets(); }, 300);
+}
+
+function updateProgress() {
+  const done = currentIdx;
+  const total = totalToDecide;
+  const pct = total > 0 ? Math.round((done/total)*100) : 0;
+  document.getElementById('progressText').textContent = `${done} / ${total}`;
+  document.getElementById('progressFill').style.width = pct + '%';
+}
+
+// Buckets
+function updateBuckets() {
+  const b={Morning:[],Afternoon:[],Evening:[],Tomorrow:[]};
+  Object.entries(assignments).forEach(([id,block])=>{
+    const t=tasks.find(t=>t.id===id);
+    if(t) b[block].push(t.name.split(' — ')[0].split(' \u2014 ')[0]);
+  });
+  [['Morning','bMorning'],['Afternoon','bAfternoon'],['Evening','bEvening'],['Tomorrow','bTomorrow']].forEach(([k,id])=>{
+    const el=document.getElementById(id);
+    el.innerHTML=b[k].length?b[k].map(n=>`<div class="bucket-item">${n}</div>`).join(''):'<span class="bucket-empty">Empty</span>';
+  });
+  // Skipped list
+  const sl = document.getElementById('skippedList');
+  const ss = document.getElementById('skippedSection');
+  if (skipped.length) {
+    ss.style.display='block';
+    sl.innerHTML = skipped.map(id=>{const t=tasks.find(t=>t.id===id);return t?`<div class="skipped-item">${t.name.split(' — ')[0]}</div>`:''}).join('');
+  } else { ss.style.display='none'; }
+}
+
+// Navigation
+function showEmpty() {
+  document.getElementById('cardView').style.display='none';
+  document.getElementById('emptyState').style.display='flex';
+  document.getElementById('bucketsScreen').style.display='none';
+  updateBuckets();
+}
+
+function showBuckets() {
+  document.getElementById('cardView').style.display='none';
+  document.getElementById('emptyState').style.display='none';
+  document.getElementById('bucketsScreen').style.display='flex';
+  updateBuckets();
+}
+
+function showCards() {
+  document.getElementById('cardView').style.display='flex';
+  document.getElementById('emptyState').style.display='none';
+  document.getElementById('bucketsScreen').style.display='none';
+}
+
+// After last card, auto-show buckets
+const origShowEmpty = showEmpty;
+
+// Save
+async function saveToNotion() {
+  const btn = document.getElementById('saveBtn');
+  btn.disabled=true; btn.textContent='SAVING...';
+  let ok=0,fail=0;
+
+  // Update time blocks and scheduled deadlines
+  for(const task of tasks){
+    const block = assignments[task.id] || null;
+    const scheduledTime = scheduledTimes[task.id] || null;
+    const props = { 'Time Block': block?{select:{name:block}}:{select:null} };
+    if (scheduledTime) {
+      props['Deadline'] = { date: { start: `${TODAY}T${scheduledTime}:00`, time_zone: 'Europe/Lisbon' } };
+    }
+    try {
+      await nr(`/pages/${task.id}`,'PATCH',{ properties: props });
+      ok++;
+    } catch(e){ fail++; }
+  }
+
+  // Mark done tasks
+  for(const id of markedDone){
+    try {
+      await nr(`/pages/${id}`,'PATCH',{ properties:{ 'Status':{select:{name:'Done'}} } });
+    } catch(e){}
+  }
+
+  if(fail===0){ btn.textContent='✓ SAVED'; btn.style.background='var(--success)'; btn.style.color='var(--bg)'; showToast('Saved!', true); }
+  else { btn.textContent=`SAVED ${ok}, FAILED ${fail}`; btn.style.background='var(--afternoon)'; }
+  setTimeout(()=>{ btn.textContent='SAVE TO NOTION'; btn.style.background=''; btn.style.color=''; btn.disabled=false; },3000);
+}
+
+// Loading
+function showLoading(msg){ document.getElementById('loadingMsg').textContent=msg; document.getElementById('loadingScreen').classList.add('show'); }
+function hideLoading(){ document.getElementById('loadingScreen').classList.remove('show'); }
+
+// Toast
+function showToast(msg,success=false){ const t=document.getElementById('toast'); t.textContent=msg; t.className=success?'show success':'show'; setTimeout(()=>t.className='',4000); }
+
+// Override empty to show buckets
+function showEmpty() {
+  document.getElementById('cardView').style.display='none';
+  document.getElementById('emptyState').style.display='none';
+  document.getElementById('bucketsScreen').style.display='flex';
+  updateBuckets();
+}
+
+// Init
+function startApp(){ document.getElementById('setupScreen').style.display='none'; const app=document.getElementById('app'); app.style.display='flex'; app.style.flexDirection='column'; app.style.alignItems='center'; fetchTasks(); }
+if(getToken()) startApp();
+</script>
+</body>
+</html>
