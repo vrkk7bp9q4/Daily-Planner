@@ -332,7 +332,7 @@ async function fetchTasks() {
       filter: {
         and: [
       { property: 'Status', select: { does_not_equal: 'Done' } },
-      { property: 'Tags', multiselect: { does_not_contain: 'Drop-Worthy' } } 
+      { property: 'Tags', multi_select: { does_not_contain: 'Drop-worthy' } } 
         ]
       },
       sorts: [{ timestamp: 'created_time', direction: 'ascending' }],
