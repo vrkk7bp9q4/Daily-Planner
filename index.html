@@ -331,10 +331,10 @@ async function fetchTasks() {
     const data = await nr(`/databases/${DB_ID}/query`, 'POST', {
       filter: {
         and: [
-      { property: 'Status', select: { does_not_equal: 'Done' } }
+      { property: 'Status', select: { does_not_equal: 'Done' } },
       { property: 'Tags', multiselect: { does_not_contain: 'Drop-Worthy' } } 
         ]
-      }
+      },
       sorts: [{ timestamp: 'created_time', direction: 'ascending' }],
       page_size: 100
     });
