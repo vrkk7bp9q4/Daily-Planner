@@ -298,6 +298,10 @@ const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov
 const dateStr = `${DAYS[now.getDay()]}, ${MONTHS[now.getMonth()]} ${now.getDate()}`;
 document.getElementById('dateLabel').textContent = dateStr;
 document.getElementById('bucketsDateSub').textContent = dateStr;
+const daysUntilSunday = (7 - now.newDay()) % 7
+const sunday = new Date(now)
+sunday.setDate(now.getDate() + daysUntilSunday)
+const sundaystr = `${sunday.getFullYear()}-${String(sunday.getmonth() + 1).padStart(2, `0`)}${String(sunday.getDate()).padStart(2, `0`)}`
 
 // Token
 const getToken = () => localStorage.getItem('notion_dp_token');
@@ -332,7 +336,9 @@ async function fetchTasks() {
       filter: {
         and: [
       { property: 'Status', select: { does_not_equal: 'Done' } },
-      { property: 'Tags', multi_select: { does_not_contain: 'Drop-worthy' } } 
+      { property: 'Tags', multi_select: { does_not_contain: 'Drop-worthy' } },
+      { property: 'Deadline', date: { is_not_empty: true } },
+      { property: 'Deadline', date: { on_or_before: sundayStr } }
         ]
       },
       sorts: [{ timestamp: 'created_time', direction: 'ascending' }],
