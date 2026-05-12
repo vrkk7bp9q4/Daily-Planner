@@ -301,7 +301,7 @@ document.getElementById('bucketsDateSub').textContent = dateStr;
 const daysUntilSunday = (7 - now.getDay()) % 7
 const sunday = new Date(now)
 sunday.setDate(now.getDate() + daysUntilSunday)
-const sundayStr = ${sunday.getFullYear()}-${String(sunday.getMonth() + 1).padStart(2, '0')}-${String(sunday.getDate()).padStart(2, '0')}`
+const sundayStr = `${sunday.getFullYear()}-${String(sunday.getMonth() + 1).padStart(2, '0')}-${String(sunday.getDate()).padStart(2, '0')}`
 
 // Token
 const getToken = () => localStorage.getItem('notion_dp_token');
