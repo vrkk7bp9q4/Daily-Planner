@@ -342,7 +342,7 @@ async function fetchTasks() {
       { property: 'Status', select: { does_not_equal: 'Done' } },
       { property: 'Tags', multi_select: { does_not_contain: 'Drop-worthy' } },
       { property: 'Deadline', date: { is_not_empty: true } },
-      { property: 'Deadline', date: { on_or_before: sundayStr } }
+      { property: 'Deadline', date: { on_or_before: tomorrowStr } }
         ]
       },
       sorts: [{ timestamp: 'created_time', direction: 'ascending' }],
