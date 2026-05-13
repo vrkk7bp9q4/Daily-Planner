@@ -293,6 +293,7 @@ let totalToDecide = 0;
 // Date
 const now = new Date();
 const TODAY = now.toISOString().split('T')[0];
+const todayStr = TODAY
 const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const dateStr = `${DAYS[now.getDay()]}, ${MONTHS[now.getMonth()]} ${now.getDate()}`;
@@ -302,7 +303,10 @@ const daysUntilSunday = (7 - now.getDay()) % 7
 const sunday = new Date(now)
 sunday.setDate(now.getDate() + daysUntilSunday)
 const sundayStr = `${sunday.getFullYear()}-${String(sunday.getMonth() + 1).padStart(2, '0')}-${String(sunday.getDate()).padStart(2, '0')}`
-
+const tomorrow = new Date(now)
+tomorrow.setDate(now.getDate() + 1)
+const tomorrowStr = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, '0')}-${String(tomorrow.getDate()).padStart(2, '0')}`
+  
 // Token
 const getToken = () => localStorage.getItem('notion_dp_token');
 function saveToken() {
@@ -690,8 +694,14 @@ async function saveToNotion() {
     const scheduledTime = scheduledTimes[task.id] || null;
     const props = { 'Time Block': block?{select:{name:block}}:{select:null} };
     if (scheduledTime) {
-      props['Deadline'] = { date: { start: `${TODAY}T${scheduledTime}:00`, time_zone: 'Europe/Lisbon' } };
-    }
+  props['Deadline'] = { date: { start: `${TODAY}T${scheduledTime}:00`, time_zone: 'Europe/Lisbon' } };
+} else if (block === 'Morning' || block === 'Afternoon' || block === 'Evening') {
+  props['Deadline'] = { date: { start: todayStr } };
+} else if (block === 'Tomorrow') {
+  props['Deadline'] = { date: { start: tomorrowStr } };
+} else {
+  props['Deadline'] = { date: null };
+}
     try {
       await nr(`/pages/${task.id}`,'PATCH',{ properties: props });
       ok++;
