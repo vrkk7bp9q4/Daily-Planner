@@ -256,7 +256,7 @@ function loadTasks(silent) {
   return nr('/databases/' + DB + '/query', 'POST', {
     filter: { and: [
       { property: 'Status', select: { does_not_equal: 'Done' } },
-      { property: 'Level', multi_select: { does_not_contain: 'Drop-worthy' } }
+      { property: 'Level', multi_select: { does_not_contain: 'Drop-worthy' } },
       { property: 'Level', multi_select: { does_not_contain: 'Full Catch-Up' } }
     ]},
     page_size: 100
