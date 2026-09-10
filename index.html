@@ -99,6 +99,12 @@ body { padding-bottom: 68px; }
 .dbtn.on { background: var(--text); color: var(--bg); border-color: var(--text); font-weight: 600; }
 
 /* MISC */
+.drawer-h { display: flex; align-items: center; gap: 9px; padding: 13px 2px; margin-top: 14px; border-top: 1px solid var(--border); cursor: pointer; }
+.drawer-arrow { color: var(--faint); font-size: 11px; width: 10px; }
+.drawer-name { font-size: 12.5px; color: var(--muted); text-transform: uppercase; letter-spacing: 1.2px; flex: 1; }
+.drawer-n { font-size: 12px; color: var(--faint); }
+.pill.late { border-color: #7a2f2a; color: #e0736a; }
+.pill.today { border-color: #7a6a2a; color: #e0c96a; }
 .empty { padding: 26px 0; text-align: center; color: var(--faint); font-size: 13px; font-style: italic; }
 .spin { width: 26px; height: 26px; border: 2px solid var(--border); border-top-color: var(--text); border-radius: 50%; animation: sp 0.8s linear infinite; margin: 40px auto; }
 @keyframes sp { to { transform: rotate(360deg); } }
@@ -310,9 +316,9 @@ function render() {
   if (pane === 'today') renderToday();
   else if (pane === 'plan') renderPlan();
   else renderSched();
-  var un = 0;
-  for (var i = 0; i < tasks.length; i++) if (!tasks[i].block) un++;
-  document.getElementById('hcount').textContent = un + ' por atribuir';
+  var c = 0;
+  for (var i = 0; i < tasks.length; i++) if (bucketOf(tasks[i]) === 'today' && !tasks[i].block) c++;
+  document.getElementById('hcount').textContent = c + ' para hoje';
 }
 
 function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
@@ -413,21 +419,75 @@ function toggleTask(id) {
 }
 
 /* ---------- PLAN ---------- */
+var openSec = { week: false, recur: false, nodate: false };
+
+function todayStr() {
+  var n = new Date();
+  var m = n.getMonth() + 1, d = n.getDate();
+  return n.getFullYear() + '-' + (m < 10 ? '0' + m : m) + '-' + (d < 10 ? '0' + d : d);
+}
+function plusDays(k) {
+  var n = new Date();
+  n.setDate(n.getDate() + k);
+  var m = n.getMonth() + 1, d = n.getDate();
+  return n.getFullYear() + '-' + (m < 10 ? '0' + m : m) + '-' + (d < 10 ? '0' + d : d);
+}
+
+function bucketOf(t) {
+  var today = todayStr();
+  if (t.status === 'Recurring Block') return 'recur';
+  var has = !!t.deadline;
+  if (has && t.deadline <= today) return 'today';
+  if (t.status === 'Waiting') return has ? 'hidden' : 'hidden';
+  if (t.block === 'Tomorrow') return 'today';
+  if (has && t.deadline <= plusDays(7)) return 'week';
+  if (has) return 'hidden';
+  if (t.status === 'In Progress') return 'today';
+  if (t.levels.indexOf('Must Do') > -1) return 'today';
+  return 'nodate';
+}
+
 function renderPlan() {
   var el = document.getElementById('pane-plan');
-  var un = [], as = [];
-  for (var i = 0; i < tasks.length; i++) (tasks[i].block ? as : un).push(tasks[i]);
-  un.sort(rank); as.sort(rank);
-  var h = '';
-  h += '<div class="sec"><span class="sec-name">Por atribuir</span><span class="sec-time">' + un.length + '</span></div>';
-  if (!un.length) h += '<div class="empty">Tudo atribuído.</div>';
-  for (var a = 0; a < un.length; a++) h += planCard(un[a]);
-  if (as.length) {
-    h += '<div class="sec" style="margin-top:26px"><span class="sec-name">Atribuídas</span><span class="sec-time">' + as.length + '</span></div>';
-    for (var b = 0; b < as.length; b++) h += planCard(as[b]);
+  var b = { today: [], week: [], recur: [], nodate: [] };
+  for (var i = 0; i < tasks.length; i++) {
+    var k = bucketOf(tasks[i]);
+    if (b[k]) b[k].push(tasks[i]);
   }
+  b.today.sort(rank);
+  b.week.sort(byDate);
+  b.nodate.sort(byCreated);
+  b.recur.sort(rank);
+
+  var h = '';
+  h += '<div class="sec"><span class="sec-name">Para hoje</span><span class="sec-time">' + b.today.length + '</span></div>';
+  if (!b.today.length) h += '<div class="empty">Nada urgente. Vê as gavetas abaixo.</div>';
+  for (var a = 0; a < b.today.length; a++) h += planCard(b.today[a]);
+
+  h += drawer('week', 'Esta semana', b.week, 'Nada nos próximos 7 dias.');
+  h += drawer('recur', 'Sempre disponíveis', b.recur, 'Sem blocos recorrentes.');
+  h += drawer('nodate', 'Sem data', b.nodate, 'Vazio — bom sinal.');
+
   el.innerHTML = h;
 }
+
+function drawer(key, label, list, emptyMsg) {
+  var open = openSec[key];
+  var h = '<div class="drawer-h" onclick="toggleSec(\'' + key + '\')">';
+  h += '<span class="drawer-arrow">' + (open ? '▾' : '▸') + '</span>';
+  h += '<span class="drawer-name">' + label + '</span>';
+  h += '<span class="drawer-n">' + list.length + '</span></div>';
+  if (open) {
+    if (!list.length) h += '<div class="empty">' + emptyMsg + '</div>';
+    for (var i = 0; i < list.length; i++) h += planCard(list[i]);
+  }
+  return h;
+}
+
+function toggleSec(k) { openSec[k] = !openSec[k]; renderPlan(); }
+
+function byDate(a, b) { return (a.deadline < b.deadline) ? -1 : 1; }
+function byCreated(a, b) { return (a.created < b.created) ? -1 : 1; }
 
 function rank(a, b) {
   var f = function(t) {
@@ -438,13 +498,27 @@ function rank(a, b) {
   };
   var d = f(a) - f(b);
   if (d !== 0) return d;
+  if (a.deadline && b.deadline) return (a.deadline < b.deadline) ? -1 : 1;
+  if (a.deadline) return -1;
+  if (b.deadline) return 1;
   return (a.created < b.created) ? -1 : 1;
 }
 
+function dueLabel(t) {
+  if (!t.deadline) return '';
+  var today = todayStr();
+  if (t.deadline < today) return '<span class="pill late">atrasada</span>';
+  if (t.deadline === today) return '<span class="pill today">hoje</span>';
+  return '<span class="pill">' + t.deadline.substring(8,10) + '/' + t.deadline.substring(5,7) + '</span>';
+}
+
 function planCard(t) {
-  var h = '<div class="pcard' + (t.block ? ' assigned' : '') + '">';
+  var h = '<div class="pcard' + (t.block && t.block !== 'Tomorrow' ? ' assigned' : '') + '">';
   h += '<div class="pcard-name">' + esc(t.name) + '</div>';
-  h += '<div class="tcard-meta">' + pills(t) + '</div>';
+  if (t.goal) h += '<div class="tcard-goal">' + esc(t.goal) + '</div>';
+  h += '<div class="tcard-meta">' + dueLabel(t) + pills(t);
+  if (t.status === 'Waiting') h += '<span class="pill">à espera</span>';
+  h += '</div>';
   h += '<div class="pbtns">';
   var m = [['Morning','m','Manhã'],['Afternoon','a','Tarde'],['Evening','e','Noite'],['Tomorrow','t','Amanhã']];
   for (var i = 0; i < m.length; i++) {
