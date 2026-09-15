@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <title>Day Planner</title>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
@@ -60,6 +63,27 @@ body { padding-bottom: 68px; }
 .pill.must { border-color: #7a2f2a; color: #e0736a; }
 .pill.next { border-color: #2a6b4a; color: #5fd39b; }
 .chev { color: var(--faint); font-size: 12px; padding-top: 3px; }
+
+/* HERO */
+.hero { background: linear-gradient(160deg, #191919, #121212); border: 1px solid #333; border-radius: 16px; padding: 18px 17px 16px; margin-top: 18px; }
+.hero-tag { font-size: 10px; letter-spacing: 2.5px; text-transform: uppercase; color: var(--success); font-weight: 700; margin-bottom: 11px; display: flex; align-items: center; gap: 8px; }
+.hero-tag span.blk { color: var(--muted); font-weight: 400; letter-spacing: 1.5px; }
+.hero-name { font-size: 20px; font-weight: 600; line-height: 1.3; letter-spacing: -0.3px; }
+.hero-goal { font-size: 13px; color: #9a9a9a; font-style: italic; margin-top: 8px; line-height: 1.45; }
+.hero-meta { margin-top: 11px; display: flex; gap: 5px; flex-wrap: wrap; }
+.hero-acts { display: flex; gap: 8px; margin-top: 16px; }
+.hero-done { flex: 3; background: var(--success); color: #04301a; border: none; border-radius: 10px; padding: 13px; font-size: 14.5px; font-weight: 700; cursor: pointer; }
+.hero-skip { flex: 1; background: none; border: 1px solid var(--faint); color: var(--muted); border-radius: 10px; padding: 13px 8px; font-size: 13px; cursor: pointer; }
+.hero-steps { margin-top: 14px; border-top: 1px solid #2c2c2c; padding-top: 6px; }
+.hero-empty { text-align: center; padding: 34px 16px; color: var(--muted); }
+.hero-empty b { display: block; font-size: 17px; color: var(--text); margin-bottom: 6px; font-weight: 600; }
+
+.hero.pinned { border-color: #6b5a1f; background: linear-gradient(160deg, #1d1a10, #141209); }
+.hero-tag.pin { color: var(--morning); }
+.hero-done.pin { background: var(--morning); color: #332600; }
+.unpin { background: none; border: none; color: var(--muted); font-size: 12px; text-decoration: underline; cursor: pointer; padding: 4px 8px; }
+.pinbtn { width: 100%; margin-top: 7px; padding: 9px; border-radius: 8px; border: 1px dashed var(--faint); background: none; color: var(--muted); font-size: 12px; cursor: pointer; }
+.pinbtn.on { border: 1px solid var(--morning); color: var(--morning); background: rgba(245,200,66,0.07); font-weight: 600; }
 
 /* SUB STEPS */
 .subs { border-top: 1px solid var(--border); padding: 6px 14px 12px 45px; display: none; }
@@ -280,6 +304,7 @@ function loadTasks(silent) {
         levels: lv,
         domain: dom,
         block: (pr['Time Block'] && pr['Time Block'].select) ? pr['Time Block'].select.name : null,
+        first: (pr['Do First'] && pr['Do First'].checkbox) ? true : false,
         deadline: (pr.Deadline && pr.Deadline.date) ? pr.Deadline.date.start.substring(0,10) : null,
         created: p.created_time
       });
@@ -334,22 +359,151 @@ function pills(t) {
   return h;
 }
 
+var skipN = 0;
+
+function curBlockKey() {
+  var n = new Date();
+  var m = n.getHours() * 60 + n.getMinutes();
+  if (m < 13 * 60) return 'Morning';
+  if (m < 18 * 60 + 30) return 'Afternoon';
+  return 'Evening';
+}
+
+function pinned() {
+  for (var i = 0; i < tasks.length; i++)
+    if (tasks[i].first && tasks[i].status !== 'Done') return tasks[i];
+  return null;
+}
+
+function heroPick() {
+  var p = pinned();
+  if (p) return p;
+  var order = ['Morning', 'Afternoon', 'Evening'];
+  var cur = curBlockKey();
+  var from = order.indexOf(cur);
+  var pool = [];
+  for (var o = from; o < order.length; o++) {
+    var g = [];
+    for (var i = 0; i < tasks.length; i++)
+      if (tasks[i].block === order[o] && tasks[i].status !== 'Done') g.push(tasks[i]);
+    g.sort(rank);
+    for (var j = 0; j < g.length; j++) pool.push(g[j]);
+  }
+  for (var k = 0; k < from; k++) {
+    var g2 = [];
+    for (var a = 0; a < tasks.length; a++)
+      if (tasks[a].block === order[k] && tasks[a].status !== 'Done') g2.push(tasks[a]);
+    g2.sort(rank);
+    for (var b = 0; b < g2.length; b++) pool.push(g2[b]);
+  }
+  if (!pool.length) return null;
+  if (skipN >= pool.length) skipN = 0;
+  return pool[skipN];
+}
+
+function blkName(k) {
+  for (var i = 0; i < BLOCKS.length; i++) if (BLOCKS[i].key === k) return BLOCKS[i].name;
+  return k;
+}
+
 function renderToday() {
   var el = document.getElementById('pane-today');
+  var hero = heroPick();
   var h = '';
-  var any = false;
-  for (var b = 0; b < BLOCKS.length; b++) {
-    var blk = BLOCKS[b];
-    var list = [];
-    for (var i = 0; i < tasks.length; i++) if (tasks[i].block === blk.key) list.push(tasks[i]);
-    h += '<div class="sec"><span class="sec-dot" style="background:' + blk.col + '"></span>';
-    h += '<span class="sec-name">' + blk.name + '</span><span class="sec-time">' + blk.time + '</span></div>';
-    if (!list.length) { h += '<div class="empty">Nada atribuído</div>'; continue; }
-    any = true;
-    for (var k = 0; k < list.length; k++) h += taskCard(list[k]);
+
+  if (!hero) {
+    var anyAssigned = false;
+    for (var z = 0; z < tasks.length; z++) if (tasks[z].block && tasks[z].block !== 'Tomorrow') anyAssigned = true;
+    h += '<div class="hero"><div class="hero-empty">';
+    if (anyAssigned) h += '<b>Tudo feito.</b>Nada por fazer nos blocos de hoje.';
+    else h += '<b>Dia por planear.</b>Vai a Planear e atribui tarefas.';
+    h += '</div></div>';
+    el.innerHTML = h;
+    return;
   }
-  if (!any) h += '<div class="empty" style="padding-top:30px">Vai a <b>Planear</b> para atribuir tarefas.</div>';
+
+  var isPin = hero.first;
+  h += '<div class="hero' + (isPin ? ' pinned' : '') + '">';
+  if (isPin) h += '<div class="hero-tag pin">Primeiro <span class="blk">· antes de tudo</span></div>';
+  else h += '<div class="hero-tag">Agora <span class="blk">· ' + blkName(hero.block) + '</span></div>';
+  h += '<div class="hero-name">' + esc(hero.name) + '</div>';
+  if (hero.goal) h += '<div class="hero-goal">' + esc(hero.goal) + '</div>';
+  h += '<div class="hero-meta">' + dueLabel(hero) + pills(hero) + '</div>';
+  h += '<div class="hero-acts">';
+  h += '<button class="hero-done' + (isPin ? ' pin' : '') + '" onclick="toggleTask(\'' + hero.id + '\')">Feito</button>';
+  if (!isPin) h += '<button class="hero-skip" onclick="skipHero()">saltar</button>';
+  h += '</div>';
+  if (isPin) h += '<div style="text-align:center;margin-top:10px"><button class="unpin" onclick="setFirst(\'' + hero.id + '\',false)">desafixar</button></div>';
+  h += '<div class="hero-steps"><div class="subs open" id="s_' + hero.id + '"></div></div>';
+  h += '</div>';
+
+  var rest = 0;
+  for (var q = 0; q < tasks.length; q++) {
+    var t = tasks[q];
+    if (t.block && t.block !== 'Tomorrow' && t.status !== 'Done' && t.id !== hero.id) rest++;
+  }
+  h += '<div class="drawer-h" onclick="toggleSec(\'rest\')">';
+  h += '<span class="drawer-arrow">' + (openSec.rest ? '▾' : '▸') + '</span>';
+  h += '<span class="drawer-name">Resto do dia</span>';
+  h += '<span class="drawer-n">' + rest + '</span></div>';
+
+  if (openSec.rest) {
+    for (var b = 0; b < BLOCKS.length; b++) {
+      var blk = BLOCKS[b];
+      var list = [];
+      for (var i = 0; i < tasks.length; i++)
+        if (tasks[i].block === blk.key && tasks[i].id !== hero.id) list.push(tasks[i]);
+      if (!list.length) continue;
+      list.sort(rank);
+      h += '<div class="sec"><span class="sec-dot" style="background:' + blk.col + '"></span>';
+      h += '<span class="sec-name">' + blk.name + '</span><span class="sec-time">' + blk.time + '</span></div>';
+      for (var k = 0; k < list.length; k++) h += taskCard(list[k]);
+    }
+  }
   el.innerHTML = h;
+  loadHeroSteps(hero.id);
+}
+
+function loadHeroSteps(id) {
+  var box = document.getElementById('s_' + id);
+  if (!box) return;
+  box.innerHTML = '<div style="color:var(--faint);font-size:12px;padding:8px 0">a carregar…</div>';
+  loadSubs(id).then(function(d) {
+    var next = -1;
+    for (var i = 0; i < d.steps.length; i++) if (!d.steps[i].checked) { next = i; break; }
+    var h = '';
+    for (var j = 0; j < d.steps.length; j++) {
+      var s = d.steps[j];
+      var isNext = (j === next);
+      h += '<div class="sub" onclick="toggleStep(\'' + id + '\',\'' + s.id + '\')">';
+      h += '<div class="sbox' + (s.checked ? ' on' : '') + '" id="b_' + s.id + '">✓</div>';
+      h += '<div class="sub-n">' + (j + 1) + '.</div>';
+      h += '<div class="sub-t' + (s.checked ? ' struck' : '') + '" id="t_' + s.id + '"' + (isNext ? ' style="color:var(--text);font-weight:500"' : '') + '>' + esc(s.text) + '</div></div>';
+    }
+    if (!d.steps.length) h = '<div style="color:var(--faint);font-size:12px;padding:6px 0">Sem passos.</div>';
+    for (var n = 0; n < d.notes.length && n < 2; n++) h += '<div class="note-blk">' + esc(d.notes[n]) + '</div>';
+    box.innerHTML = h;
+  });
+}
+
+function skipHero() { skipN++; renderToday(); }
+
+function setFirst(id, val) {
+  var target = null, prev = [];
+  for (var i = 0; i < tasks.length; i++) {
+    if (tasks[i].id === id) target = tasks[i];
+    else if (tasks[i].first) prev.push(tasks[i]);
+  }
+  if (!target) return;
+  target.first = val;
+  if (val) for (var j = 0; j < prev.length; j++) prev[j].first = false;
+  render();
+  var calls = [nr('/pages/' + id, 'PATCH', { properties: { 'Do First': { checkbox: val } } })];
+  if (val) for (var k = 0; k < prev.length; k++)
+    calls.push(nr('/pages/' + prev[k].id, 'PATCH', { properties: { 'Do First': { checkbox: false } } }));
+  Promise.all(calls).then(function() {
+    if (val) toast('Marcada para fazer primeiro', true);
+  }).catch(function(e) { toast('Não gravou: ' + e.message); loadTasks(true); });
 }
 
 function taskCard(t) {
@@ -360,7 +514,7 @@ function taskCard(t) {
   h += '<div class="tcard-body" onclick="toggleSubs(\'' + t.id + '\')">';
   h += '<div class="tcard-name' + (done ? ' struck' : '') + '">' + esc(t.name) + '</div>';
   if (t.goal) h += '<div class="tcard-goal">' + esc(t.goal) + '</div>';
-  h += '<div class="tcard-meta">' + pills(t) + '</div>';
+  h += '<div class="tcard-meta">' + dueLabel(t) + pills(t) + '</div>';
   h += '</div><div class="chev" onclick="toggleSubs(\'' + t.id + '\')">▾</div></div>';
   h += '<div class="subs" id="s_' + t.id + '"></div></div>';
   return h;
@@ -414,13 +568,15 @@ function toggleTask(id) {
   var prev = t.status;
   t.status = newStatus;
   renderToday();
-  nr('/pages/' + id, 'PATCH', { properties: { Status: { select: { name: newStatus } } } })
-    .then(function() { toast(goingDone ? 'Feito ✓' : 'Reaberto', true); })
+  var props = { Status: { select: { name: newStatus } } };
+  if (goingDone && t.first) { props['Do First'] = { checkbox: false }; t.first = false; }
+  nr('/pages/' + id, 'PATCH', { properties: props })
+    .then(function() { skipN = 0; toast(goingDone ? 'Feito ✓' : 'Reaberto', true); })
     .catch(function(e) { t.status = prev; renderToday(); toast('Não gravou: ' + e.message); });
 }
 
 /* ---------- PLAN ---------- */
-var openSec = { week: false, recur: false, nodate: false };
+var openSec = { week: false, recur: false, nodate: false, rest: false };
 
 function todayStr() {
   var n = new Date();
@@ -485,7 +641,7 @@ function drawer(key, label, list, emptyMsg) {
   return h;
 }
 
-function toggleSec(k) { openSec[k] = !openSec[k]; renderPlan(); }
+function toggleSec(k) { openSec[k] = !openSec[k]; if (pane === 'today') renderToday(); else renderPlan(); }
 
 function byDate(a, b) { return (a.deadline < b.deadline) ? -1 : 1; }
 function byCreated(a, b) { return (a.created < b.created) ? -1 : 1; }
@@ -526,7 +682,9 @@ function planCard(t) {
     var on = t.block === m[i][0] ? ' on' : '';
     h += '<button class="pbtn ' + m[i][1] + on + '" onclick="assign(\'' + t.id + '\',\'' + m[i][0] + '\')">' + m[i][2] + '</button>';
   }
-  h += '</div></div>';
+  h += '</div>';
+  h += '<button class="pinbtn' + (t.first ? ' on' : '') + '" onclick="setFirst(\'' + t.id + '\',' + (t.first ? 'false' : 'true') + ')">' + (t.first ? '★  Fazer primeiro' : '☆  Fazer primeiro') + '</button>';
+  h += '</div>';
   return h;
 }
 
