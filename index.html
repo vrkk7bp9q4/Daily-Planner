@@ -85,6 +85,15 @@ body { padding-bottom: 68px; }
 .pinbtn { width: 100%; margin-top: 7px; padding: 9px; border-radius: 8px; border: 1px dashed var(--faint); background: none; color: var(--muted); font-size: 12px; cursor: pointer; }
 .pinbtn.on { border: 1px solid var(--morning); color: var(--morning); background: rgba(245,200,66,0.07); font-weight: 600; }
 
+.brief-btn { width: 100%; margin-top: 16px; padding: 11px 14px; text-align: left; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; color: var(--text); font-size: 13.5px; cursor: pointer; }
+.brief { background: var(--surface); border: 1px solid var(--border); border-top: none; border-radius: 0 0 10px 10px; margin-top: -6px; padding: 12px 14px 14px; }
+.brief-sum { font-size: 12px; color: var(--muted); padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+.brief-lbl { font-size: 10px; text-transform: uppercase; letter-spacing: 1.8px; color: var(--muted); margin: 14px 0 6px; }
+.brief-key { border-left: 3px solid var(--morning); padding: 2px 0 2px 10px; }
+.brief-key-n { font-size: 15.5px; font-weight: 600; line-height: 1.35; }
+.brief-row { font-size: 13px; line-height: 1.4; padding: 5px 0; }
+.brief-row.dim { color: #a0a0a0; }
+
 /* SUB STEPS */
 .subs { border-top: 1px solid var(--border); padding: 6px 14px 12px 45px; display: none; }
 .subs.open { display: block; }
@@ -161,12 +170,14 @@ body { padding-bottom: 68px; }
   </div>
 
   <div class="pane on" id="pane-today"></div>
+  <div class="pane" id="pane-rot"></div>
   <div class="pane" id="pane-plan"></div>
   <div class="pane" id="pane-sched"></div>
 </div>
 
 <div class="tabs" id="tabs" style="display:none">
   <div class="tab on" data-p="today" onclick="go('today')">Hoje</div>
+  <div class="tab" data-p="rot" onclick="go('rot')">Rotina</div>
   <div class="tab" data-p="plan" onclick="go('plan')">Planear</div>
   <div class="tab" data-p="sched" onclick="go('sched')">Horário</div>
 </div>
@@ -181,60 +192,148 @@ var VER = '2022-06-28';
 var tasks = [];
 var subsCache = {};
 var pane = 'today';
-var schedDay = null;
 
 var DAYS = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
 var MON = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
 
 /* ---------- SCHEDULE (hardcoded) ---------- */
-function weekday(t, extra) {
-  return [
-    { t:'08:00', l:'Acordar', k:'dim' },
-    { t:'08:00', l:'Morning Routine', k:'dim' },
-    { t:'08:45', l:'Planear o dia', k:'dim' },
-    { t:'09:00', l:'Trabalho — bloco 1', k:'work', tag:'Manhã' },
-    { t:'13:00', l:'Meditar', k:'dim' },
-    { t:'13:30', l:'Almoço', k:'dim' },
-    { t:'14:30', l:'Trabalho — bloco 2', k:'work', tag:'Tarde' },
-    { t:'18:30', l:'Livre', k:'dim' },
-    { t:'19:15', l:'Viagem', k:'dim' },
-    { t:'19:30', l:'Jiu-Jitsu', k:'work' },
-    { t:'21:00', l:'Viagem', k:'dim' },
-    { t:'21:15', l:'Jantar', k:'dim' },
-    { t:'22:00', l: extra || 'Livre', k: extra ? 'work' : 'dim' },
-    { t:'22:30', l:'Wind Down', k:'work', tag:'Noite' },
-    { t:'23:30', l:'Night Routine', k:'dim' },
-    { t:'00:00', l:'Dormir', k:'dim' }
-  ];
-}
+var AM_JJ = [
+  { t:'08:00', l:'Acordar + Morning Essencial', k:'dim' },
+  { t:'09:00', l:'Trabalho', k:'work', tag:'Manhã' },
+  { t:'10:15', l:'Viagem', k:'dim' },
+  { t:'10:30', l:'Jiu-Jitsu', k:'work' },
+  { t:'11:45', l:'Viagem', k:'dim' },
+  { t:'12:00', l:'Morning Routine (banho + toilette)', k:'dim' },
+  { t:'12:15', l:'Trabalho', k:'work', tag:'Manhã' },
+  { t:'13:00', l:'Meditar', k:'dim' },
+  { t:'13:30', l:'Almoço', k:'dim' },
+  { t:'14:30', l:'Trabalho — bloco 2', k:'work', tag:'Tarde' }
+];
+var AM_STD = [
+  { t:'08:00', l:'Acordar + Morning Routine', k:'dim' },
+  { t:'09:00', l:'Trabalho — bloco 1', k:'work', tag:'Manhã' },
+  { t:'13:00', l:'Meditar', k:'dim' },
+  { t:'13:30', l:'Almoço', k:'dim' },
+  { t:'14:30', l:'Trabalho — bloco 2', k:'work', tag:'Tarde' }
+];
+var EVE_EFFETA = [
+  { t:'18:30', l:'Livre', k:'dim' },
+  { t:'19:00', l:'Effetá', k:'work' },
+  { t:'00:00', l:'Night Essencial + dormir', k:'dim' }
+];
+var EVE_JJ = [
+  { t:'18:30', l:'Livre', k:'dim' },
+  { t:'19:15', l:'Viagem', k:'dim' },
+  { t:'19:30', l:'Jiu-Jitsu', k:'work' },
+  { t:'21:00', l:'Viagem', k:'dim' },
+  { t:'21:15', l:'Banho', k:'dim' },
+  { t:'21:30', l:'Jantar', k:'dim' },
+  { t:'22:00', l:'Treinar flair', k:'work' },
+  { t:'22:30', l:'Wind down', k:'work', tag:'Noite' },
+  { t:'23:30', l:'Night Routine', k:'dim' },
+  { t:'00:00', l:'Dormir', k:'dim' }
+];
+var EVE_FREE = [
+  { t:'18:30', l:'Livre', k:'dim' },
+  { t:'22:30', l:'Wind down', k:'work', tag:'Noite' },
+  { t:'23:30', l:'Night Routine', k:'dim' },
+  { t:'00:00', l:'Dormir', k:'dim' }
+];
 var SCHED = {
-  1: weekday(),
-  2: weekday('Treinar Flair'),
-  3: weekday(),
-  4: weekday('Treinar Flair'),
-  5: weekday(),
+  1: AM_JJ.concat(EVE_EFFETA),
+  2: AM_STD.concat(EVE_JJ),
+  3: AM_JJ.concat(EVE_EFFETA),
+  4: AM_STD.concat(EVE_JJ),
+  5: AM_JJ.concat(EVE_FREE),
   6: [
-    { t:'08:00', l:'Acordar', k:'dim' },
-    { t:'08:00', l:'Morning Routine', k:'dim' },
+    { t:'08:00', l:'Acordar + Morning Routine', k:'dim' },
     { t:'09:00', l:'Bloco flexível', k:'work', tag:'Manhã' },
     { t:'13:00', l:'Almoço', k:'dim' },
     { t:'14:30', l:'Livre', k:'dim' },
-    { t:'22:30', l:'Wind Down', k:'work', tag:'Noite' },
+    { t:'22:30', l:'Wind down', k:'work', tag:'Noite' },
     { t:'23:30', l:'Night Routine', k:'dim' },
     { t:'00:00', l:'Dormir', k:'dim' }
   ],
   0: [
-    { t:'08:00', l:'Acordar', k:'dim' },
-    { t:'08:00', l:'Morning Routine', k:'dim' },
+    { t:'08:00', l:'Acordar + Morning Routine', k:'dim' },
     { t:'09:00', l:'Livre', k:'dim' },
-    { t:'13:00', l:'Almoço', k:'dim' },
-    { t:'15:00', l:'Revisão Semanal', k:'work' },
+    { t:'12:10', l:'Viagem', k:'dim' },
+    { t:'12:30', l:'Missa', k:'work' },
+    { t:'13:30', l:'Viagem', k:'dim' },
+    { t:'13:50', l:'Almoço', k:'dim' },
+    { t:'15:00', l:'Revisão semanal', k:'work' },
     { t:'16:00', l:'Livre', k:'dim' },
-    { t:'22:30', l:'Wind Down', k:'work', tag:'Noite' },
+    { t:'22:30', l:'Wind down', k:'work', tag:'Noite' },
     { t:'23:30', l:'Night Routine', k:'dim' },
     { t:'00:00', l:'Dormir', k:'dim' }
   ]
 };
+
+/* ---------- ROUTINES ---------- */
+var R_MORNING = { name:'Morning Routine', steps:[
+  { l:'Acordar e beber água', m:1, o:'Copo na mesa de cabeceira' },
+  { l:'Abrir o estor', m:1 },
+  { l:'Meter música', m:1 },
+  { l:'Fazer a cama', m:2 },
+  { l:'Tomar banho', m:7 },
+  { l:'Fazer a barba', m:10 },
+  { l:'Toilette', m:5, o:'Desodorizante, perfume, bálsamo de bigode, creme de cara, produto de cabelo' },
+  { l:'Vestir-me', m:2, o:'Roupa preparada de véspera' },
+  { l:'Pequeno-almoço', m:7 },
+  { l:'Lavar a loiça do pequeno-almoço', m:3 },
+  { l:'Lavar os dentes', m:4 },
+  { l:'Planear o dia', m:5, o:'Tab Planear' }
+]};
+var R_MORNING_ESS = { name:'Morning Essencial', steps:[
+  { l:'Acordar e beber água', m:1, o:'Copo na mesa de cabeceira' },
+  { l:'Abrir o estor', m:1 },
+  { l:'Meter música', m:1 },
+  { l:'Fazer a cama', m:2 },
+  { l:'Vestir-me', m:2, o:'Roupa preparada de véspera' },
+  { l:'Pequeno-almoço', m:7 },
+  { l:'Lavar a loiça do pequeno-almoço', m:3 },
+  { l:'Lavar os dentes', m:4 },
+  { l:'Planear o dia', m:5, o:'Tab Planear' }
+]};
+var R_POST_JJ = { name:'Morning Routine — depois do treino', time:'12:00', steps:[
+  { l:'Tomar banho', m:7 },
+  { l:'Toilette', m:5, o:'Desodorizante, perfume, bálsamo de bigode, creme de cara, produto de cabelo' }
+]};
+var R_NIGHT = { name:'Night Routine', steps:[
+  { l:'Pôr tudo a carregar', m:2, o:'iPhone, powerbank, AirPods, computador — longe da cama' },
+  { l:'Preparar amanhã', m:3, o:'Roupa na cadeira, copo de água, saco do Jiu-Jitsu se for seg/qua/sex' },
+  { l:'Arrumar sofá e quarto', m:5 },
+  { l:'Lavar os dentes', m:4 },
+  { l:'Vestir pijama', m:1, o:'Na almofada' },
+  { l:'Tomar melatonina', m:0, o:'Na mesa de cabeceira' },
+  { l:'Fechar o estor, desligar luzes, acender a vela', m:1 },
+  { l:'Pôr música para dormir', m:1, o:'Temporizador no telemóvel, headphones de dormir' },
+  { l:'Alongar', m:5 },
+  { l:'Meditar', m:5, o:'À luz da vela' }
+]};
+var R_NIGHT_ESS = { name:'Night Essencial', steps:[
+  { l:'Pôr tudo a carregar', m:2 },
+  { l:'Copo de água na mesa de cabeceira', m:1 },
+  { l:'Lavar os dentes', m:4 },
+  { l:'Vestir pijama', m:1 },
+  { l:'Tomar melatonina', m:0 },
+  { l:'Estor e luzes', m:1 },
+  { l:'Pôr música para dormir', m:1, o:'Temporizador no telemóvel, headphones de dormir' }
+]};
+function isJJMorning(dw) { return dw === 1 || dw === 3 || dw === 5; }
+function isEffeta(dw) { return dw === 1 || dw === 3; }
+
+/* 00:00–06:59 belongs to the night before */
+function logicalDate() {
+  var n = new Date();
+  if (n.getHours() < 7) n.setDate(n.getDate() - 1);
+  return n;
+}
+function isoOf(n) {
+  var m = n.getMonth() + 1, d = n.getDate();
+  return n.getFullYear() + '-' + (m < 10 ? '0' + m : m) + '-' + (d < 10 ? '0' + d : d);
+}
+
 var BLOCKS = [
   { key:'Morning',   name:'Manhã',  time:'09:00 – 13:00', col:'var(--morning)' },
   { key:'Afternoon', name:'Tarde',  time:'14:30 – 18:30', col:'var(--afternoon)' },
@@ -305,10 +404,20 @@ function loadTasks(silent) {
         domain: dom,
         block: (pr['Time Block'] && pr['Time Block'].select) ? pr['Time Block'].select.name : null,
         first: (pr['Do First'] && pr['Do First'].checkbox) ? true : false,
+        effort: (pr.Effort && pr.Effort.select) ? pr.Effort.select.name : '',
+        dias: (function(){ var a=[]; if (pr.Dias && pr.Dias.multi_select) for (var z=0; z<pr.Dias.multi_select.length; z++) a.push(pr.Dias.multi_select[z].name); return a; })(),
         deadline: (pr.Deadline && pr.Deadline.date) ? pr.Deadline.date.start.substring(0,10) : null,
         created: p.created_time
       });
     }
+    var DN3 = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+    var todayLbl = DN3[logicalDate().getDay()];
+    var kept = [];
+    for (var y = 0; y < tasks.length; y++) {
+      var dd = tasks[y].dias;
+      if (!dd || !dd.length || dd.indexOf(todayLbl) > -1) kept.push(tasks[y]);
+    }
+    tasks = kept;
     render();
   }).catch(function(e) {
     toast('Erro: ' + e.message);
@@ -341,6 +450,7 @@ function loadSubs(id) {
 function render() {
   if (pane === 'today') renderToday();
   else if (pane === 'plan') renderPlan();
+  else if (pane === 'rot') renderRoutine();
   else renderSched();
   var c = 0;
   for (var i = 0; i < tasks.length; i++) if (bucketOf(tasks[i]) === 'today' && !tasks[i].block) c++;
@@ -406,10 +516,111 @@ function blkName(k) {
   return k;
 }
 
+var briefOpen = false;
+var WORK_DOMS = ["Dad's Work", 'Bartending', 'AI Learning'];
+function isWork(t) { return WORK_DOMS.indexOf(t.domain) > -1; }
+function daysLate(iso) {
+  var a = new Date(iso + 'T00:00:00'), b = new Date(todayStr() + 'T00:00:00');
+  return Math.round((b - a) / 86400000);
+}
+function todaysTasks() {
+  var out = [];
+  for (var i = 0; i < tasks.length; i++) {
+    var t = tasks[i];
+    if (t.status === 'Done') continue;
+    var inBlock = t.block === 'Morning' || t.block === 'Afternoon' || t.block === 'Evening';
+    if (inBlock || t.first || bucketOf(t) === 'today') out.push(t);
+  }
+  return out;
+}
+function mustToday(t) {
+  if (t.first) return true;
+  if (t.deadline && t.deadline <= todayStr()) return true;
+  return t.levels.indexOf('Must Do') > -1;
+}
+function lbRank(a, b) {
+  var EF = { Heavy: 0, Medium: 1, Low: 2 };
+  var f = function(t) {
+    return [t.first ? 0 : 1, t.levels.indexOf('Must Do') > -1 ? 0 : 1,
+            (t.deadline && t.deadline < todayStr()) ? 0 : 1,
+            (t.effort in EF) ? EF[t.effort] : 3];
+  };
+  var x = f(a), y = f(b);
+  for (var i = 0; i < x.length; i++) if (x[i] !== y[i]) return x[i] - y[i];
+  if (a.deadline && b.deadline) return a.deadline < b.deadline ? -1 : 1;
+  return a.deadline ? -1 : (b.deadline ? 1 : 0);
+}
+function whyChips(t) {
+  var h = '';
+  if (t.first) h += '<span class="pill today">fixada para primeiro</span>';
+  if (t.deadline) {
+    var d = daysLate(t.deadline);
+    if (d > 0) h += '<span class="pill late">atrasada ' + d + (d === 1 ? ' dia' : ' dias') + '</span>';
+    else if (d === 0) h += '<span class="pill today">prazo hoje</span>';
+  }
+  if (t.levels.indexOf('Must Do') > -1) h += '<span class="pill must">Must Do</span>';
+  if (t.effort) h += '<span class="pill">' + t.effort + '</span>';
+  if (t.status === 'Waiting') h += '<span class="pill">à espera</span>';
+  return h;
+}
+function briefingHtml() {
+  var h = '<button class="brief-btn" onclick="briefOpen=!briefOpen;renderToday()">Briefing do dia <span style="color:var(--faint)">' + (briefOpen ? '▾' : '▸') + '</span></button>';
+  if (!briefOpen) return h;
+  var tt = todaysTasks();
+  var work = [], pers = [];
+  for (var i = 0; i < tt.length; i++) (isWork(tt[i]) ? work : pers).push(tt[i]);
+  work.sort(lbRank); pers.sort(lbRank);
+  var ld = logicalDate(), rows = SCHED[ld.getDay()];
+  var mins = [], prev = -1;
+  for (var r = 0; r < rows.length; r++) { var v = toMin(rows[r].t); if (v < prev) v += 1440; mins.push(v); prev = v; }
+  var workMin = 0, fixed = [];
+  for (var k = 0; k < rows.length; k++) {
+    var dur = (k + 1 < rows.length) ? mins[k + 1] - mins[k] : 0;
+    var lab = rows[k].l;
+    if (lab.indexOf('Trabalho') === 0 || lab.indexOf('Bloco') === 0) workMin += dur;
+    else if (rows[k].k === 'work' && lab.indexOf('Wind') !== 0) fixed.push(rows[k].t + ' ' + lab);
+  }
+  h += '<div class="brief">';
+  var key = work.length ? work[0] : null;
+  var p = pinned();
+  if (p && key !== p) key = p;
+  h += '<div class="brief-sum">' + Math.floor(workMin / 60) + 'h' + (workMin % 60 ? (' ' + workMin % 60 + 'min') : '') + ' de trabalho hoje · ' + work.length + (work.length === 1 ? ' tarefa' : ' tarefas') + ' de trabalho</div>';
+  if (key) {
+    h += '<div class="brief-lbl">Tarefa-chave</div>';
+    h += '<div class="brief-key"><div class="brief-key-n">' + esc(key.name) + '</div>';
+    if (key.goal) h += '<div class="tcard-goal">' + esc(key.goal) + '</div>';
+    h += '<div class="tcard-meta">' + whyChips(key) + '</div></div>';
+  }
+  var must = [], rest = [];
+  for (var w = 0; w < work.length; w++) {
+    if (work[w] === key) continue;
+    (mustToday(work[w]) ? must : rest).push(work[w]);
+  }
+  if (must.length) {
+    h += '<div class="brief-lbl">Tem de sair hoje</div>';
+    for (var a = 0; a < must.length; a++) h += '<div class="brief-row">' + esc(must[a].name) + '<div class="tcard-meta">' + whyChips(must[a]) + '</div></div>';
+  }
+  if (rest.length) {
+    h += '<div class="brief-lbl">Também no plano</div>';
+    for (var b = 0; b < rest.length; b++) h += '<div class="brief-row dim">' + esc(rest[b].name) + '</div>';
+  }
+  if (!work.length) h += '<div class="brief-row dim">Nenhuma tarefa de trabalho atribuída ou com prazo hoje.</div>';
+  if (fixed.length) {
+    h += '<div class="brief-lbl">Compromissos fixos</div>';
+    for (var f = 0; f < fixed.length; f++) h += '<div class="brief-row dim">' + fixed[f] + '</div>';
+  }
+  if (pers.length) {
+    h += '<div class="brief-lbl">Pessoal</div>';
+    for (var q = 0; q < pers.length; q++) h += '<div class="brief-row dim">' + esc(pers[q].name) + '</div>';
+  }
+  h += '</div>';
+  return h;
+}
+
 function renderToday() {
   var el = document.getElementById('pane-today');
   var hero = heroPick();
-  var h = '';
+  var h = briefingHtml();
 
   if (!hero) {
     var anyAssigned = false;
@@ -592,6 +803,7 @@ function plusDays(k) {
 
 function bucketOf(t) {
   var today = todayStr();
+  if (t.dias && t.dias.length) return 'today';
   if (t.status === 'Recurring Block') return 'recur';
   var has = !!t.deadline;
   if (has && t.deadline <= today) return 'today';
@@ -701,35 +913,81 @@ function assign(id, block) {
 }
 
 /* ---------- SCHEDULE ---------- */
+function toMin(s) { return parseInt(s.substring(0,2),10) * 60 + parseInt(s.substring(3,5),10); }
+
 function renderSched() {
   var el = document.getElementById('pane-sched');
-  var today = new Date().getDay();
-  if (schedDay === null) schedDay = today;
-  var h = '<div class="daysel">';
-  var order = [1,2,3,4,5,6,0];
-  for (var i = 0; i < order.length; i++) {
-    var d = order[i];
-    h += '<button class="dbtn' + (d === schedDay ? ' on' : '') + '" onclick="setDay(' + d + ')">' + DAYS[d].substring(0,3) + '</button>';
-  }
-  h += '</div>';
-  var rows = SCHED[schedDay];
-  var nowMin = -1;
-  if (schedDay === today) { var n = new Date(); nowMin = n.getHours() * 60 + n.getMinutes(); }
+  var ld = logicalDate();
+  var rows = SCHED[ld.getDay()];
+  var n = new Date();
+  var nowMin = n.getHours() * 60 + n.getMinutes();
+  if (n.getHours() < 7) nowMin += 1440;
+  var mins = [], prev = -1;
   for (var r = 0; r < rows.length; r++) {
-    var cur = toMin(rows[r].t);
-    var nxt = (r + 1 < rows.length) ? toMin(rows[r + 1].t) : 1440;
-    if (nxt <= cur) nxt = 1440;
+    var v = toMin(rows[r].t);
+    if (v < prev) v += 1440;
+    mins.push(v); prev = v;
+  }
+  var h = '<div class="sec"><span class="sec-name">' + DAYS[ld.getDay()] + '</span><span class="sec-time">' + ld.getDate() + ' ' + MON[ld.getMonth()] + '</span></div>';
+  for (var i = 0; i < rows.length; i++) {
+    var cur = mins[i];
+    var nxt = (i + 1 < mins.length) ? mins[i + 1] : cur + 480;
     var isNow = nowMin >= cur && nowMin < nxt;
     h += '<div class="slot' + (isNow ? ' nowrow' : '') + '">';
-    h += '<div class="slot-t">' + rows[r].t + '</div>';
-    h += '<div class="slot-l ' + rows[r].k + '">' + rows[r].l;
-    if (rows[r].tag) h += '<span class="slot-tag">' + rows[r].tag + '</span>';
+    h += '<div class="slot-t">' + rows[i].t + '</div>';
+    h += '<div class="slot-l ' + rows[i].k + '">' + rows[i].l;
+    if (rows[i].tag) h += '<span class="slot-tag">' + rows[i].tag + '</span>';
     h += '</div></div>';
   }
   el.innerHTML = h;
 }
-function toMin(s) { return parseInt(s.substring(0,2),10) * 60 + parseInt(s.substring(3,5),10); }
-function setDay(d) { schedDay = d; renderSched(); }
+
+/* ---------- ROUTINE ---------- */
+function routineSection(r, key, headTime) {
+  var total = 0;
+  for (var t = 0; t < r.steps.length; t++) total += r.steps[t].m;
+  var h = '<div class="sec"><span class="sec-name">' + r.name + '</span><span class="sec-time">' + (headTime ? headTime + ' · ' : '') + total + ' min</span></div>';
+  for (var j = 0; j < r.steps.length; j++) {
+    var s = r.steps[j];
+    var on = localStorage.getItem(key + j) === '1';
+    h += '<div class="sub" onclick="tickRoutine(\'' + key + j + '\')">';
+    h += '<div class="sbox' + (on ? ' on' : '') + '">✓</div>';
+    h += '<div class="sub-n">' + (j + 1) + '.</div>';
+    h += '<div style="flex:1"><div class="sub-t' + (on ? ' struck' : '') + '">' + s.l + ' <span style="color:var(--faint);font-size:11px">' + s.m + ' min</span></div>';
+    if (s.o) h += '<div style="font-size:11.5px;color:var(--muted);font-style:italic;margin-top:2px">' + s.o + '</div>';
+    h += '</div></div>';
+  }
+  return h;
+}
+
+function renderRoutine() {
+  var el = document.getElementById('pane-rot');
+  var hr = new Date().getHours();
+  var ld = logicalDate();
+  var dw = ld.getDay();
+  var base = 'rot_' + isoOf(ld) + '_';
+  var h = '<div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:2px;margin-top:14px">' + DAYS[dw] + '</div>';
+  if (hr >= 7 && hr < 15) {
+    if (isJJMorning(dw)) {
+      h += routineSection(R_MORNING_ESS, base + 'me_', '08:00');
+      h += routineSection(R_POST_JJ, base + 'pj_', R_POST_JJ.time);
+    } else {
+      h += routineSection(R_MORNING, base + 'mf_', '08:00');
+    }
+  } else {
+    if (isEffeta(dw)) h += routineSection(R_NIGHT_ESS, base + 'ne_', '00:00');
+    else h += routineSection(R_NIGHT, base + 'nf_', '23:30');
+  }
+  el.innerHTML = h;
+}
+
+function tickRoutine(k) {
+  try {
+    if (localStorage.getItem(k) === '1') localStorage.removeItem(k);
+    else localStorage.setItem(k, '1');
+  } catch (e) {}
+  renderRoutine();
+}
 
 /* ---------- NAV ---------- */
 function go(p) {
@@ -739,7 +997,7 @@ function go(p) {
   document.getElementById('pane-' + p).className = 'pane on';
   var ts = document.querySelectorAll('.tab');
   for (var j = 0; j < ts.length; j++) ts[j].className = (ts[j].getAttribute('data-p') === p) ? 'tab on' : 'tab';
-  document.getElementById('htitle').textContent = p === 'today' ? 'Hoje' : (p === 'plan' ? 'Planear' : 'Horário');
+  document.getElementById('htitle').textContent = p === 'today' ? 'Hoje' : (p === 'plan' ? 'Planear' : (p === 'rot' ? 'Rotina' : 'Horário'));
   render();
 }
 
