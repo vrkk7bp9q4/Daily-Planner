@@ -283,7 +283,7 @@ function computeDay(items, opt) {
   if (isToday) {
     for (var a = 0; a < rows.length; a++) {
       var r0 = rows[a];
-      if (r0.kind === 'Fixo' && !r0.done && r0.nominal != null && now >= r0.nominal + r0.dur + r0.travel) {
+      if (r0.kind === 'Fixo' && !r0.done && r0.nominal != null && now >= r0.nominal + r0.dur + (r0.dur > 0 ? r0.travel : 0)) {
         r0.done = true; r0.auto = true;
       }
     }
@@ -319,7 +319,7 @@ function computeDay(items, opt) {
       s = (r.nominal != null) ? r.nominal : (cursor != null ? cursor + r.travel : (now || 0));
       r.leave = s - r.travel;
       e = s + r.dur;
-      r.back = e + r.travel;
+      r.back = e + (r.dur > 0 ? r.travel : 0); /* Duration 0 = arrive-by point: one-way trip */
       r.late = (r.state === 'pending' && cursor != null && cursor > r.leave) ? cursor - r.leave : 0;
       r.s = s; r.e = e;
       cursor = mx(cursor, r.back);
@@ -1139,7 +1139,7 @@ function tlRow(r, iso, firstSeg) {
   var meta = '';
   if (st === 'done') meta = r.auto ? '' : ('feito' + (it.actual ? ' em ' + fmtDur(it.actual) : ''));
   else if (st === 'passed') meta = 'passou';
-  else if (r.kind === 'Fixo') meta = (r.travel ? 'sai ' + hm(r.leave) + ' · ' : '') + (r.dur ? 'até ' + hm(r.e) : '') + (r.late ? ' <span class="late">atraso ' + r.late + ' min</span>' : '');
+  else if (r.kind === 'Fixo') meta = [r.travel ? 'sai ' + hm(r.leave) : '', r.dur ? 'até ' + hm(r.e) : ''].filter(Boolean).join(' · ') + (r.late ? ' <span class="late">atraso ' + r.late + ' min</span>' : '');
   else if (r.kind === 'Trabalho') meta = blockName(it.block) + ' · ' + fmtDur(r.len != null ? r.len : r.dur) + (r.shrink >= 5 ? ' (era ' + fmtDur(r.dur) + ')' : '');
   else {
     meta = fmtDur(r.dur);
@@ -1168,12 +1168,18 @@ function defaultTarget() {
   return (hr >= 18 || hr < DAY_START_H) ? isoAdd(logicalISO(), 1) : logicalISO();
 }
 function renderPlan(el) {
-  var today = logicalISO(), tmr = isoAdd(today, 1);
-  if (S.planTarget !== today && S.planTarget !== tmr) S.planTarget = defaultTarget();
+  var today = logicalISO(), tmr = isoAdd(today, 1), last = isoAdd(today, 6);
+  if (!S.planTarget || S.planTarget < today || S.planTarget > last) S.planTarget = defaultTarget();
   var iso = S.planTarget;
   if (!S.days[iso]) { el.innerHTML = header('Planear', dayLabel(iso)) + '<div class="spin"></div>'; ensureDay(iso).then(render).catch(function (e) { toast('Erro: ' + e.message, true); }); return; }
   var h = header(dayLabel(iso), 'Planear');
-  h += '<div class="seg"><button data-act="target" data-v="' + today + '" class="' + (iso === today ? 'on' : '') + '">Hoje</button><button data-act="target" data-v="' + tmr + '" class="' + (iso === tmr ? 'on' : '') + '">Amanhã</button></div>';
+  h += '<div class="days">';
+  for (var dk = 0; dk < 7; dk++) {
+    var dIso = isoAdd(today, dk);
+    var dLab = dk === 0 ? 'Hoje' : (dk === 1 ? 'Amanhã' : WD[wdOf(dIso)] + ' ' + Number(dIso.substring(8, 10)));
+    h += '<button data-act="target" data-v="' + dIso + '" class="' + (iso === dIso ? 'on' : '') + '">' + dLab + '</button>';
+  }
+  h += '</div>';
   if (iso === tmr) h += closeSection(today);
 
   var res = computeFor(iso);
@@ -1209,8 +1215,8 @@ function renderPlan(el) {
   if (S.open.rest) rest.forEach(function (t) { h += candCard(t, iso); });
 
   h += '<div class="sec"><h2>Fechar o plano</h2></div>';
-  h += '<p class="note">Os alertas de saída vivem no Scriptable, no iPhone. Depois de mexer em horas fixas, corre-o outra vez.</p>';
-  h += '<div class="row-btns"><a class="btn ghost" style="text-decoration:none" href="scriptable:///run/Alertas">Agendar alertas</a>' + btn('go', 'Pronto', 'btn main', null, 'hoje') + '</div>';
+  h += '<p class="note">Avisos e alarmes de saída vêm do atalho Alarmes, no iPhone. Depois de mexer em horas fixas, carrega aqui outra vez.</p>';
+  h += '<div class="row-btns"><a class="btn ghost" style="text-decoration:none" href="shortcuts://run-shortcut?name=Alarmes">Agendar alertas</a>' + btn('go', 'Pronto', 'btn main', null, 'hoje') + '</div>';
   el.innerHTML = h;
 }
 function candCard(t, iso) {
@@ -1332,10 +1338,10 @@ function drawForm() {
     h += '</div>';
   }
   h += '<div class="fl">Duração</div><div class="opts">';
-  [5, 10, 15, 30, 45, 60, 90, 120, 180, 240].forEach(function (m) { h += '<button data-act="opt" data-f="dur" data-v="' + m + '" class="' + (Number(f.dur) === m ? 'on' : '') + '">' + fmtDur(m) + '</button>'; });
+  (f.kind === 'Fixo' ? [0] : []).concat([5, 10, 15, 30, 45, 60, 90, 120, 180, 240]).forEach(function (m) { h += '<button data-act="opt" data-f="dur" data-v="' + m + '" class="' + (Number(f.dur) === m ? 'on' : '') + '">' + (m === 0 ? 'só chegada' : fmtDur(m)) + '</button>'; });
   h += '</div>';
   if (f.kind === 'Fixo') {
-    h += '<div class="fl">Viagem, cada sentido</div><div class="opts">';
+    h += '<div class="fl">' + (Number(f.dur) === 0 ? 'Viagem, só ida (a hora é a de chegada)' : 'Viagem, cada sentido') + '</div><div class="opts">';
     [0, 5, 10, 15, 20, 30, 45].forEach(function (m) { h += '<button data-act="opt" data-f="travel" data-v="' + m + '" class="' + (Number(f.travel) === m ? 'on' : '') + '">' + (m ? m + ' min' : 'nenhuma') + '</button>'; });
     h += '</div>';
   }
