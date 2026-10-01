@@ -1165,7 +1165,7 @@ function tlRow(r, iso, firstSeg) {
 /* ===== PLANEAR ===== */
 function defaultTarget() {
   var hr = new Date().getHours();
-  return (hr >= 18 || hr < DAY_START_H) ? isoAdd(logicalISO(), 1) : logicalISO();
+  return (hr >= 21 || hr < DAY_START_H) ? isoAdd(logicalISO(), 1) : logicalISO(); /* same switch as the day-briefing skill */
 }
 function renderPlan(el) {
   var today = logicalISO(), tmr = isoAdd(today, 1), last = isoAdd(today, 6);
@@ -1342,7 +1342,7 @@ function drawForm() {
   h += '</div>';
   if (f.kind === 'Fixo') {
     h += '<div class="fl">' + (Number(f.dur) === 0 ? 'Viagem, só ida (a hora é a de chegada)' : 'Viagem, cada sentido') + '</div><div class="opts">';
-    [0, 5, 10, 15, 20, 30, 45].forEach(function (m) { h += '<button data-act="opt" data-f="travel" data-v="' + m + '" class="' + (Number(f.travel) === m ? 'on' : '') + '">' + (m ? m + ' min' : 'nenhuma') + '</button>'; });
+    [0, 5, 10, 15, 20, 30, 45, 60, 90, 120, 150, 180, 210, 240, 300].forEach(function (m) { h += '<button data-act="opt" data-f="travel" data-v="' + m + '" class="' + (Number(f.travel) === m ? 'on' : '') + '">' + (m ? fmtDur(m) : 'nenhuma') + '</button>'; });
     h += '</div>';
   }
   if (f.kind === 'Trabalho') {
