@@ -157,6 +157,12 @@ input, select, textarea { font: inherit; color: var(--text); }
 .days { display: flex; gap: 6px; overflow-x: auto; margin: 10px 0 6px; -webkit-overflow-scrolling: touch; }
 .days button { padding: 8px 13px; border-radius: 20px; border: 1px solid var(--line); color: var(--muted); font-size: 14px; white-space: nowrap; }
 .days button.on { background: var(--text); color: var(--bg); border-color: var(--text); font-weight: 600; }
+.days .pickc { position: relative; flex: none; padding: 8px 13px; border-radius: 20px; border: 1px dashed var(--line); color: var(--muted); font-size: 14px; white-space: nowrap; }
+.days .pickc input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; border: 0; padding: 0; margin: 0; }
+.ahead { margin: 4px 0 10px; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.ahead h3 { margin: 0; padding: 8px 12px; font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.ahead button { display: flex; width: 100%; gap: 10px; padding: 9px 12px; border-top: 1px solid var(--line); text-align: left; font-size: 14px; color: var(--text); }
+.ahead .d { color: var(--muted); min-width: 92px; }
 .note { font-size: 13px; color: var(--muted); margin: 6px 0 10px; }
 
 /* tabs */
@@ -560,7 +566,7 @@ function parseLog(pg) {
 /* ===== STATE ===== */
 var S = {
   view: 'hoje', tpl: [], tplById: {}, days: {}, logs: {}, tasks: [], done: [], ratio: { r: 1, n: 0 },
-  planTarget: null, weekSel: null, open: {}, subs: {}, timer: null, busy: {}
+  planTarget: null, weekSel: null, open: {}, subs: {}, timer: null, busy: {}, far: {}, ahead: null
 };
 try { S.timer = JSON.parse(localStorage.getItem('dp_timer') || 'null'); } catch (e) { S.timer = null; }
 
@@ -594,6 +600,28 @@ function fetchDayItems(iso) {
   return queryAll(DB.agenda, { filter: { and: [
     { property: 'Date', date: { equals: iso } },
     { property: 'Template', checkbox: { equals: false } } ] } }).then(function (rs) { return rs.map(parseAgenda); });
+}
+/* One-off rows (no Source) dated past the 7-day window: what's coming, so the Agenda can be the only agenda. */
+var PLAN_DAYS = 7, AHEAD_DAYS = 180;
+function loadAhead() {
+  if (loadAhead.p) return loadAhead.p;
+  var today = logicalISO();
+  loadAhead.p = queryAll(DB.agenda, { filter: { and: [
+    { property: 'Template', checkbox: { equals: false } },
+    { property: 'Date', date: { on_or_after: isoAdd(today, PLAN_DAYS) } },
+    { property: 'Date', date: { on_or_before: isoAdd(today, AHEAD_DAYS) } } ] },
+    sorts: [{ property: 'Date', direction: 'ascending' }, { property: 'Order', direction: 'ascending' }] })
+    .then(function (rs) {
+      S.ahead = rs.map(parseAgenda).filter(function (x) { return !x.source; });
+      loadAhead.p = null; return S.ahead;
+    }, function (e) { loadAhead.p = null; S.ahead = []; throw e; });
+  return loadAhead.p;
+}
+function aheadDirty(iso) { if (!iso || iso >= isoAdd(logicalISO(), PLAN_DAYS)) S.ahead = null; }
+/* Days past the window are shown without copying the week template, so later template changes still reach them.
+   They get built normally once they come within 7 days. */
+function loadFar(iso) {
+  return fetchDayItems(iso).then(function (items) { S.days[iso] = items; S.far[iso] = true; return items; });
 }
 /* A day is copied from the week template the first time anyone opens it; after that it's edited on its own.
    One build per day at a time, or two quick opens would copy the template twice. */
@@ -643,6 +671,7 @@ function loadTasks() {
 function loadAll(silent) {
   if (!silent) document.getElementById('main').innerHTML = '<div class="spin"></div>';
   var today = logicalISO();
+  S.ahead = null;
   return loadTemplates().then(function () {
     return Promise.all([ensureDay(today), loadTasks()]);
   }).then(function () {
@@ -886,7 +915,7 @@ function placeNext(id) {
 function moveAfterFixed(id, fixedId) { moveAfter(id, fixedId); }
 function deleteItem(id) {
   var iso = dayOf(id);
-  if (iso) S.days[iso] = S.days[iso].filter(function (x) { return x.id !== id; });
+  if (iso) { S.days[iso] = S.days[iso].filter(function (x) { return x.id !== id; }); aheadDirty(iso); }
   else { S.tpl = S.tpl.filter(function (x) { return x.id !== id; }); delete S.tplById[id]; }
   closeSheet(); render();
   archivePage(id).catch(function (e) { toast('Não apagou: ' + e.message, true); });
@@ -898,6 +927,7 @@ function moveToDay(id, iso2) {
   it.date = iso2; it.done = false; it.started = '';
   if (it.kind !== 'Fixo' || !it.start) it.order = null;
   if (S.days[iso2]) S.days[iso2].push(it);
+  aheadDirty(iso); aheadDirty(iso2);
   closeSheet();
   itemSave(it, { Date: P.date(iso2), Order: P.num(it.order), Done: P.check(false), Started: P.text('') });
   toast('Passou para ' + shortDate(iso2));
@@ -908,6 +938,7 @@ function createItem(fields) {
     var made = parseAgenda(pg);
     if (made.tpl) { S.tpl.push(made); S.tplById[made.id] = made; }
     else if (S.days[made.date]) S.days[made.date].push(made);
+    if (!made.tpl) aheadDirty(made.date);
     render();
     return made;
   }).catch(function (e) { toast('Não gravou: ' + e.message, true); });
@@ -1168,18 +1199,28 @@ function defaultTarget() {
   return (hr >= 21 || hr < DAY_START_H) ? isoAdd(logicalISO(), 1) : logicalISO(); /* same switch as the day-briefing skill */
 }
 function renderPlan(el) {
-  var today = logicalISO(), tmr = isoAdd(today, 1), last = isoAdd(today, 6);
-  if (!S.planTarget || S.planTarget < today || S.planTarget > last) S.planTarget = defaultTarget();
-  var iso = S.planTarget;
-  if (!S.days[iso]) { el.innerHTML = header('Planear', dayLabel(iso)) + '<div class="spin"></div>'; ensureDay(iso).then(render).catch(function (e) { toast('Erro: ' + e.message, true); }); return; }
+  var today = logicalISO(), tmr = isoAdd(today, 1), last = isoAdd(today, PLAN_DAYS - 1), maxD = isoAdd(today, 365);
+  if (!S.planTarget || S.planTarget < today || S.planTarget > maxD) S.planTarget = defaultTarget();
+  var iso = S.planTarget, far = iso > last;
+  if (!far && S.far[iso]) { delete S.far[iso]; delete S.days[iso]; }
+  if (!S.days[iso]) {
+    el.innerHTML = header('Planear', dayLabel(iso)) + '<div class="spin"></div>';
+    (far ? loadFar(iso) : ensureDay(iso)).then(render).catch(function (e) { toast('Erro: ' + e.message, true); });
+    return;
+  }
+  if (S.ahead === null) loadAhead().then(function () { if (S.view === 'plan') render(); }).catch(function () {});
   var h = header(dayLabel(iso), 'Planear');
   h += '<div class="days">';
-  for (var dk = 0; dk < 7; dk++) {
+  for (var dk = 0; dk < PLAN_DAYS; dk++) {
     var dIso = isoAdd(today, dk);
     var dLab = dk === 0 ? 'Hoje' : (dk === 1 ? 'Amanhã' : WD[wdOf(dIso)] + ' ' + Number(dIso.substring(8, 10)));
     h += '<button data-act="target" data-v="' + dIso + '" class="' + (iso === dIso ? 'on' : '') + '">' + dLab + '</button>';
   }
+  if (far) h += '<button data-act="target" data-v="' + iso + '" class="on">' + WD[wdOf(iso)] + ' ' + Number(iso.substring(8, 10)) + ' ' + MON[Number(iso.substring(5, 7)) - 1] + '</button>';
+  h += '<label class="pickc">Outra data…<input type="date" id="pickDate" min="' + today + '" max="' + maxD + '" value="' + (far ? iso : '') + '"></label>';
   h += '</div>';
+  h += aheadHtml(iso);
+  if (far) { el.innerHTML = h + farDayHtml(iso, today); return; }
   if (iso === tmr) h += closeSection(today);
 
   var res = computeFor(iso);
@@ -1218,6 +1259,27 @@ function renderPlan(el) {
   h += '<p class="note">Avisos e alarmes de saída vêm do atalho Alarmes, no iPhone. Depois de mexer em horas fixas, carrega aqui outra vez.</p>';
   h += '<div class="row-btns"><a class="btn ghost" style="text-decoration:none" href="shortcuts://run-shortcut?name=Alarmes">Agendar alertas</a>' + btn('go', 'Pronto', 'btn main', null, 'hoje') + '</div>';
   el.innerHTML = h;
+}
+function aheadHtml(iso) {
+  var list = S.ahead || [];
+  if (!list.length) return '';
+  var h = '<div class="ahead"><h3>Mais à frente</h3>';
+  list.slice(0, 6).forEach(function (it) {
+    var d = it.date;
+    h += '<button data-act="target" data-v="' + d + '"><span class="d">' + WD[wdOf(d)] + ' ' + Number(d.substring(8, 10)) + ' ' + MON[Number(d.substring(5, 7)) - 1] +
+      (it.start ? ' · ' + esc(it.start) : '') + '</span><span>' + esc(it.name) + '</span></button>';
+  });
+  if (list.length > 6) h += '<button disabled><span class="d"></span><span class="muted">+' + (list.length - 6) + ' mais</span></button>';
+  return h + '</div>';
+}
+function farDayHtml(iso, today) {
+  var res = computeFor(iso), n = daysBetween(today, iso);
+  var h = '<div class="sec"><h2>Marcado</h2><button class="c" data-act="addSheet" data-v="' + iso + '">+ adicionar</button></div>';
+  if (!(S.days[iso] || []).length) h += '<p class="note">Nada marcado ainda. Usa + adicionar: um jantar, uma consulta, uma viagem.</p>';
+  h += inboxStrip(res.inbox);
+  h += '<div class="tl">' + timelineHtml(res, iso, null) + '</div>';
+  h += '<p class="note">Faltam ' + n + ' dias. O resto do dia (rotinas e blocos) entra da semana-tipo quando faltar uma semana, à volta do que marcaste aqui.</p>';
+  return h;
 }
 function candCard(t, iso) {
   var h = '<div class="cand' + (t.pushes >= 3 ? ' hot' : '') + '"><div class="tn" data-act="taskSheet" data-id="' + t.id + '">' + esc(t.name) + '</div>';
@@ -1468,7 +1530,7 @@ var ACT = {
     try { localStorage.setItem('ndp_token', v); } catch (e) {}
     start();
   },
-  reload: function () { S.days = {}; S.subs = {}; loadAll(); },
+  reload: function () { S.days = {}; S.subs = {}; S.far = {}; S.ahead = null; loadAll(); },
   go: function (id, v) { closeSheet(); S.view = v; if (v === 'plan') S.planTarget = null; window.scrollTo(0, 0); render(); },
   target: function (id, v) { S.planTarget = v; render(); },
   planToday: function () { S.view = 'plan'; S.planTarget = logicalISO(); render(); },
@@ -1542,6 +1604,14 @@ document.addEventListener('click', function (e) {
   if (!ACT[a]) return;
   e.preventDefault();
   ACT[a](el.getAttribute('data-id'), el.getAttribute('data-v'), el, e);
+});
+
+document.addEventListener('change', function (e) {
+  var t = e.target;
+  if (!t || t.id !== 'pickDate' || !t.value) return;
+  var v = t.value, today = logicalISO();
+  if (v < today) v = today;
+  S.planTarget = v; window.scrollTo(0, 0); render();
 });
 
 /* ===== START ===== */
